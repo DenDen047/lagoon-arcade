@@ -2,6 +2,8 @@
 
 ブラウザだけで遊べる自作ゲーム集です。インストールも会員登録もいりません。入口はリポジトリ直下の `index.html` (一覧ページ) で、ゲームは1本ずつ `games/<slug>/` に入っています。
 
+**▶ [一覧ページを開く](https://denden047.github.io/lagoon-arcade/)**
+
 すべて素の HTML + Canvas + JavaScript で書かれていて、ビルド工程も外部ライブラリもありません。セーブデータは各端末のブラウザ (localStorage) にだけ残り、サーバーには送られません。
 
 | フォルダ | 内容 |
@@ -35,4 +37,4 @@ open http://127.0.0.1:8802/
 
 ## 公開
 
-GitHub Pages で `main` ブランチのルートをそのまま配信できる構成です（`.nojekyll` 入り）。Pages を有効にすると https://denden047.github.io/lagoon-arcade/ で公開され、以後は push すれば数分で反映されます。
+`main` ブランチのルートを GitHub Pages がそのまま配信します。push すれば数分で反映されます。

@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ja" data-lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lagoon Arcade</title>
+<meta name="description" content="ブラウザだけで遊べる自作ゲーム集。インストール不要、リンクを開けばすぐ始まります。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕹️</text></svg>">
+<style>
+:root{
+  --bg:#0e1014; --bg2:#151922; --line:#262c38; --line2:#39414f;
+  --fg:#e8ecf4; --fg2:#a3adbf; --fg3:#6f7a8d;
+  --accent:#ffb340; --accent2:#ff7a4d;
+  --radius:14px;
+  --font:"Helvetica Neue",Arial,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--fg); font-family:var(--font);
+  font-size:15px; line-height:1.7; -webkit-font-smoothing:antialiased;
+  background-image:radial-gradient(1200px 600px at 50% -10%, rgba(255,179,64,.10), transparent 70%);
+}
+a{color:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+
+/* ── header ── */
+header{padding:48px 0 26px}
+.head-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+h1{
+  margin:0; font-size:clamp(30px,5.5vw,46px); line-height:1.15; letter-spacing:.01em;
+  font-weight:800;
+  background:linear-gradient(100deg,var(--accent),var(--accent2));
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.tagline{margin:12px 0 0;color:var(--fg2);max-width:52em}
+.count{margin:6px 0 0;color:var(--fg3);font-size:13px;font-variant-numeric:tabular-nums}
+
+/* ── language switch ── */
+.lang{display:inline-flex;border:1px solid var(--line2);border-radius:999px;overflow:hidden;flex:none}
+.lang button{
+  appearance:none;border:0;background:transparent;color:var(--fg2);
+  font:inherit;font-size:13px;font-weight:600;letter-spacing:.04em;
+  padding:7px 15px;cursor:pointer;transition:background .15s,color .15s;
+}
+.lang button:hover{color:var(--fg)}
+.lang button[aria-pressed="true"]{background:var(--accent);color:#1a1207}
+
+/* ── toolbar ── */
+.toolbar{
+  position:sticky;top:0;z-index:10;
+  padding:14px 0 12px;margin-bottom:22px;
+  background:rgba(14,16,20,.9);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.tools{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.search{position:relative;flex:1 1 240px;min-width:200px}
+.search input{
+  width:100%;padding:9px 13px 9px 36px;border-radius:10px;
+  border:1px solid var(--line2);background:var(--bg2);color:var(--fg);
+  font:inherit;font-size:14px;
+}
+.search input::placeholder{color:var(--fg3)}
+.search input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.search::before{content:"⌕";position:absolute;left:13px;top:50%;transform:translateY(-52%);color:var(--fg3);font-size:17px}
+.sort select{
+  padding:9px 12px;border-radius:10px;border:1px solid var(--line2);
+  background:var(--bg2);color:var(--fg);font:inherit;font-size:14px;cursor:pointer;
+}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.chip{
+  appearance:none;border:1px solid var(--line2);background:var(--bg2);color:var(--fg2);
+  font:inherit;font-size:13px;padding:5px 13px;border-radius:999px;cursor:pointer;
+  transition:border-color .15s,color .15s,background .15s;
+}
+.chip:hover{color:var(--fg);border-color:var(--fg3)}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#1a1207;font-weight:600}
+
+/* ── grid ── */
+.grid{display:grid;gap:22px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));padding-bottom:8px}
+.card{
+  display:flex;flex-direction:column;
+  background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;text-decoration:none;
+  transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+.card:hover,.card:focus-visible{
+  transform:translateY(-3px);border-color:var(--accent);
+  box-shadow:0 10px 30px rgba(0,0,0,.45);outline:none;
+}
+.shot{position:relative;aspect-ratio:16/10;background:#000;overflow:hidden}
+.shot img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s ease}
+.card:hover .shot img{transform:scale(1.04)}
+.badge{
+  position:absolute;right:9px;top:9px;
+  background:rgba(10,12,16,.82);border:1px solid var(--line2);color:var(--fg);
+  font-size:11px;font-weight:600;letter-spacing:.03em;
+  padding:3px 9px;border-radius:999px;backdrop-filter:blur(4px);
+}
+.body{padding:15px 17px 17px;display:flex;flex-direction:column;gap:8px;flex:1}
+.card h2{margin:0;font-size:16.5px;line-height:1.4;font-weight:700;letter-spacing:.01em}
+.card p{margin:0;color:var(--fg2);font-size:13.5px;line-height:1.72;flex:1}
+.meta{display:flex;align-items:center;gap:9px;color:var(--fg3);font-size:12px;padding-top:3px}
+.genre{
+  color:var(--accent);border:1px solid rgba(255,179,64,.35);
+  background:rgba(255,179,64,.08);border-radius:999px;padding:2px 9px;
+}
+.date{font-variant-numeric:tabular-nums;margin-left:auto}
+
+.empty{padding:60px 0;text-align:center;color:var(--fg3)}
+
+/* ── footer ── */
+footer{
+  margin-top:52px;padding:26px 0 46px;border-top:1px solid var(--line);
+  color:var(--fg3);font-size:13px;
+}
+footer a{color:var(--fg2);text-decoration:underline;text-underline-offset:3px}
+footer a:hover{color:var(--accent)}
+footer p{margin:0 0 7px}
+
+/* ── language visibility ── */
+[data-lang="ja"] .en,[data-lang="en"] .ja{display:none}
+
+@media (max-width:600px){
+  header{padding:32px 0 20px}
+  .grid{gap:16px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="head-top">
+      <div>
+        <h1>Lagoon Arcade</h1>
+        <p class="tagline">
+          <span class="ja">ブラウザだけで遊べる自作ゲーム集。インストールも会員登録もいりません。カードを開けばその場で始まります。</span>
+          <span class="en">Browser games, all homemade. No install, no sign-up — open a card and it starts right there.</span>
+        </p>
+        <p class="count" id="count"></p>
+      </div>
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" data-lang-btn="ja" aria-pressed="true">日本語</button>
+        <button type="button" data-lang-btn="en" aria-pressed="false">English</button>
+      </div>
+    </div>
+  </header>
+</div>
+
+<div class="toolbar">
+  <div class="wrap">
+    <div class="tools">
+      <div class="search">
+        <input type="search" id="q" autocomplete="off"
+               data-ph-ja="タイトルや内容で探す" data-ph-en="Search by title or description"
+               aria-label="Search">
+      </div>
+      <div class="sort">
+        <select id="sort" aria-label="Sort">
+          <option value="new"><span></span></option>
+          <option value="name"></option>
+        </select>
+      </div>
+    </div>
+    <div class="chips" id="chips" role="group" aria-label="Genre filter"></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <main>
+    <div class="grid" id="grid"></div>
+    <p class="empty" id="empty" hidden>
+      <span class="ja">条件に合うゲームがありません。</span>
+      <span class="en">No games match your filters.</span>
+    </p>
+  </main>
+
+  <footer>
+    <p>
+      <span class="ja">すべて HTML + Canvas 製で、セーブデータは各端末のブラウザ内にだけ残ります。</span>
+      <span class="en">Everything is plain HTML + Canvas; save data stays in your own browser.</span>
+    </p>
+    <p>
+      <a href="https://denden047.github.io/">denden047.github.io</a>
+    </p>
+  </footer>
+</div>
+
+<script src="games.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var UI = {
+    ja: { all: 'すべて', new: '新しい順', name: '名前順', count: function (n, t) { return n === t ? t + ' 本' : n + ' / ' + t + ' 本'; } },
+    en: { all: 'All',   new: 'Newest',   name: 'A–Z',    count: function (n, t) { return n === t ? t + ' games' : n + ' of ' + t + ' games'; } }
+  };
+
+  var grid   = document.getElementById('grid');
+  var empty  = document.getElementById('empty');
+  var chips  = document.getElementById('chips');
+  var qInput = document.getElementById('q');
+  var sortEl = document.getElementById('sort');
+  var countEl = document.getElementById('count');
+
+  var lang = 'ja';
+  var genre = 'all';
+
+  // ── language ───────────────────────────────────────────────
+  function initLang() {
+    var stored = null;
+    try { stored = localStorage.getItem('lagoon-arcade-lang'); } catch (e) {}
+    var param = new URLSearchParams(location.search).get('lang');
+    setLang(param === 'en' || param === 'ja' ? param : (stored || 'ja'), false);
+  }
+
+  function setLang(next, persist) {
+    lang = next === 'en' ? 'en' : 'ja';
+    document.documentElement.setAttribute('data-lang', lang);
+    document.documentElement.setAttribute('lang', lang);
+    document.querySelectorAll('[data-lang-btn]').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.langBtn === lang));
+    });
+    qInput.placeholder = qInput.getAttribute('data-ph-' + lang);
+    sortEl.options[0].textContent = UI[lang].new;
+    sortEl.options[1].textContent = UI[lang].name;
+    if (persist !== false) { try { localStorage.setItem('lagoon-arcade-lang', lang); } catch (e) {} }
+    renderChips();
+    render();
+  }
+
+  // ── filters ────────────────────────────────────────────────
+  function renderChips() {
+    chips.innerHTML = '';
+    var list = [{ id: 'all', ja: UI.ja.all, en: UI.en.all }].concat(GENRES);
+    list.forEach(function (g) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.textContent = g[lang];
+      b.setAttribute('aria-pressed', String(g.id === genre));
+      b.addEventListener('click', function () { genre = g.id; renderChips(); render(); });
+      chips.appendChild(b);
+    });
+  }
+
+  function visible() {
+    var q = qInput.value.trim().toLowerCase();
+    var list = GAMES.filter(function (g) {
+      if (genre !== 'all' && g.genre !== genre) return false;
+      if (!q) return true;
+      var t = (g.ja.title + ' ' + g.ja.desc + ' ' + g.en.title + ' ' + g.en.desc + ' ' + g.slug).toLowerCase();
+      return t.indexOf(q) !== -1;
+    });
+    if (sortEl.value === 'name') {
+      list = list.slice().sort(function (a, b) {
+        return a[lang].title.localeCompare(b[lang].title, lang);
+      });
+    } else {
+      list = list.slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+    }
+    return list;
+  }
+
+  // ── render ─────────────────────────────────────────────────
+  function render() {
+    var list = visible();
+    grid.innerHTML = '';
+    list.forEach(function (g) {
+      var genreLabel = (GENRES.filter(function (x) { return x.id === g.genre; })[0] || {})[lang] || g.genre;
+      var players = (lang === 'en' && g.players_en) ? g.players_en : g.players;
+
+      var a = document.createElement('a');
+      a.className = 'card';
+      a.href = 'games/' + g.slug + '/';
+
+      var shot = document.createElement('div');
+      shot.className = 'shot';
+      var img = document.createElement('img');
+      img.src = 'assets/thumbs/' + g.slug + '.jpg';
+      img.alt = g[lang].title;
+      img.loading = 'lazy';
+      img.width = 960; img.height = 600;
+      shot.appendChild(img);
+      var badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = players;
+      shot.appendChild(badge);
+
+      var body = document.createElement('div');
+      body.className = 'body';
+      var h = document.createElement('h2');
+      h.textContent = g[lang].title;
+      var p = document.createElement('p');
+      p.textContent = g[lang].desc;
+      var meta = document.createElement('div');
+      meta.className = 'meta';
+      var ge = document.createElement('span');
+      ge.className = 'genre';
+      ge.textContent = genreLabel;
+      var de = document.createElement('span');
+      de.className = 'date';
+      de.textContent = g.date;
+      meta.appendChild(ge); meta.appendChild(de);
+      body.appendChild(h); body.appendChild(p); body.appendChild(meta);
+
+      a.appendChild(shot); a.appendChild(body);
+      grid.appendChild(a);
+    });
+
+    empty.hidden = list.length > 0;
+    countEl.textContent = UI[lang].count(list.length, GAMES.length);
+  }
+
+  // ── wire up ────────────────────────────────────────────────
+  document.querySelectorAll('[data-lang-btn]').forEach(function (b) {
+    b.addEventListener('click', function () { setLang(b.dataset.langBtn); });
+  });
+  qInput.addEventListener('input', render);
+  sortEl.addEventListener('change', render);
+
+  initLang();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+Lagoon Arcade — 利用条件 / Terms of Use
+
+Copyright (c) 2026 Lagoon Arcade. All rights reserved.
+
+このリポジトリのゲーム本体（HTML・CSS・JavaScript）の著作権は Lagoon Arcade が持っています。オープンソースソフトウェアではありません。
+
+
+■ してよいこと
+
+・公開ページで自由に遊ぶこと
+・ソースコードを読むこと、勉強のために手元で動かして書き換えること
+・ゲーム実況、配信、動画投稿、スクリーンショットの公開（収益化していてもかまいません）
+
+
+■ してはいけないこと
+
+・ゲーム一式またはその一部を、自分の作品として再配布・公開・販売すること
+・ソースコードやアセットを取り出して他の作品に組み込むこと
+
+
+■ 第三者の素材について
+
+第三者の素材（音楽・画像・ライブラリ）は Lagoon Arcade の著作物ではありません。それぞれの権利者の条件に従います。詳しくは CREDITS.md を見てください。
+
+
+---
+
+The games in this repository are proprietary, not open source. You may play them and read the source to learn from it. You may not redistribute, republish, or sell them or any part of them. Third-party assets are listed in CREDITS.md and are governed by their own licenses.

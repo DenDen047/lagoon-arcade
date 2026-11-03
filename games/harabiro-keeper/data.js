@@ -92,7 +92,10 @@ const MATE_READY = { F: 7, M: 5 };
 const LAY_FIRST = 3;                // 交尾してから最初の卵鞘まで (約9日。Wu & Chang 2011 の産卵前期間 8.3日に寄せた)
 const LAY_INTERVAL = 4;             // 卵鞘と卵鞘のあいだ (約12日。同じく 13.4日に寄せた)
 const LAY_VIRGIN = 12;              // 交尾していないメスが卵鞘を産みはじめるまで (ゲームの設定)
-const MAX_OOTHECAE = 5;             // メス1匹が産む卵鞘は4〜5個
+// 卵鞘は産むほど産みにくくなる。LAY_FADE 個に近づくほど産む確率が下がり、そこから先は LAY_MIN_CHANCE だけ残る。
+// メス1匹が産む卵鞘は4〜5個 (Wu & Chang 2011) なので、5個くらいで頭打ちにする
+const LAY_FADE = 5;
+const LAY_MIN_CHANCE = 0.05;
 const ADULT_LIFE = { F: 46, M: 39 }; // 寿命。飼育下でメス138日・オス118日。外では寒さで秋の終わりまで
 const EGGS_TEXT = '150個ほど';       // 1つの卵鞘に100〜250個、平均157個
 const HATCH_COUNT = [100, 200];

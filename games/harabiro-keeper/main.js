@@ -260,6 +260,9 @@ function wormTurn() {
 }
 const WORM_NOTE = 'ハリガネムシの子どもは川の中で生まれ、水の中で育つカゲロウなどの幼虫に入りこむ。その虫が大人になって陸に飛んできたのをカマキリが食べると、カマキリの体の中で大きくなる。大きくなると、カマキリを水べに引きよせて外へ出ていく。寄生されたメスは卵が育たない。水の中で育たないペットショップのコオロギやハエなら、この道すじで寄生されることはない。';
 
+// 卵鞘を産む確率。はじめはほぼ確実で、産むほど下がる (1個目 100%・3個目 84%・5個目 36%・6個目から 5%)
+const layChance = (laid) => Math.max(LAY_MIN_CHANCE, 1 - (laid / LAY_FADE) ** 2);
+
 // 成虫の1ターン。一生を終えたら true を返す
 function adultTurn() {
   const g = game, m = g.m;
@@ -267,12 +270,15 @@ function adultTurn() {
   if (m.sex === 'F') {
     // 交尾していなくても卵鞘は産む。ただし幼虫は生まれない。ハリガネムシに寄生されると卵が育たない
     const ready = m.mated || m.adultTurns >= LAY_VIRGIN;
-    if (ready && m.laid < MAX_OOTHECAE && !m.worm && !m.wormOut && m.hunger >= 40 && ++m.eggProgress >= LAY_INTERVAL) {
+    // LAY_INTERVAL ターンごとに産む機会がある。産んだ数が多いほど、産まずに終わることが増える
+    if (ready && !m.worm && !m.wormOut && m.hunger >= 40 && ++m.eggProgress >= LAY_INTERVAL) {
       m.eggProgress = 0;
-      m.laid++;
-      if (m.mated) m.fertileLaid++;
-      g.oothecae.push({ fertile: m.mated, mother: m.name });
-      say(m.mated ? `${m.name}が卵鞘を産んだ！ この中に${EGGS_TEXT}の卵が入っている。` : `${m.name}が卵鞘を産んだ。でも交尾していないので、この卵鞘から幼虫は生まれない。`);
+      if (Math.random() < layChance(m.laid)) {
+        m.laid++;
+        if (m.mated) m.fertileLaid++;
+        g.oothecae.push({ fertile: m.mated, mother: m.name });
+        say(m.mated ? `${m.name}が卵鞘を産んだ！ この中に${EGGS_TEXT}の卵が入っている。` : `${m.name}が卵鞘を産んだ。でも交尾していないので、この卵鞘から幼虫は生まれない。`);
+      }
     }
   } else if (m.partnerTimer > 0 && --m.partnerTimer === 0) {
     g.oothecae.push({ fertile: true, mother: 'お見合い相手のメス' });
@@ -304,7 +310,7 @@ function mateFemale(duringMeal) {
     m.mated = true;
     m.eggProgress = Math.max(m.eggProgress, LAY_INTERVAL - LAY_FIRST); // 交尾から約9日で最初の卵鞘
     say('交尾に成功した！ 終わったので、オスは別のケースにもどした。');
-    modal('交尾成功！', `<p>${esc(m.name)}は交尾に成功した。これから産む卵鞘からは、春に幼虫が生まれる。</p><p class="sub">よく食べさせると、10日あまりおきに、${MAX_OOTHECAE}個くらいまで卵鞘を産む。</p>`);
+    modal('交尾成功！', `<p>${esc(m.name)}は交尾に成功した。これから産む卵鞘からは、春に幼虫が生まれる。</p><p class="sub">よく食べさせると、10日あまりおきに卵鞘を産む。産むほど産みにくくなり、${LAY_FADE}個くらいでほとんど産まなくなる。</p>`);
   } else {
     say('メスはオスをエサだと思ってつかまえてしまった…');
     modal('あっ…', `<p>おなかをすかせた${esc(m.name)}は、オスをエサだと思ってつかまえてしまった。</p><p class="sub">メスがエサを食べている最中か、おなかいっぱいのときに入れるとうまくいく。お迎えできるオスはあと${m.malesLeft}匹。</p>`);
@@ -652,7 +658,7 @@ function actLook() {
   if (m.wormOut) tips.push('ハリガネムシに寄生されていた。体が弱っていて、卵は育たない。');
   if (m.injury) tips.push('脱皮の失敗であしが曲がっていて、カマのとどく範囲がせまい。次の脱皮がうまくいけば、少しよくなる。');
   if (!sexKnown(m)) tips.push(m.stage >= SEX_VISIBLE_STAGE ? 'おなかの節が数えられる大きさになった。' : '性別は、5齢くらいになるとおなかの節の数でわかる。');
-  if (isAdult(m) && m.sex === 'F') tips.push(m.mated ? `交尾ずみ。よく食べさせると卵鞘を産む（いままでに${m.laid}個）。` : m.adultTurns >= MATE_READY.F ? 'オスを迎えられる。' : `成虫になって${MATE_READY.F * TURN_DAYS}日ほどたつと、オスを迎えられる。`);
+  if (isAdult(m) && m.sex === 'F') tips.push(m.mated ? `交尾ずみ。よく食べさせると卵鞘を産む（いままでに${m.laid}個）。${m.laid >= LAY_FADE - 2 ? 'たくさん産んだので、だんだん産まなくなってきた。' : ''}` : m.adultTurns >= MATE_READY.F ? 'オスを迎えられる。' : `成虫になって${MATE_READY.F * TURN_DAYS}日ほどたつと、オスを迎えられる。`);
   if (isAdult(m) && m.sex === 'M') tips.push(m.mated ? '交尾ずみ。' : m.adultTurns >= MATE_READY.M ? 'お見合いに行ける。' : 'もう少ししたら、お見合いに行ける。');
   const btns = [];
   if (!sexKnown(m) && m.stage >= SEX_VISIBLE_STAGE) btns.push({ label: 'おなかの節を数える', cls: 'pink', onClick: sexQuiz });

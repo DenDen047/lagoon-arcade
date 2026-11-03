@@ -27,4 +27,15 @@ const GAMES = [
       desc: 'Raise a tree-dwelling broad-bellied mantis (Hierodula patellifera) from a nymph. Watch the seasons, the prey you can catch, and the temperature of the case, then carry the line on through her egg cases. Plays on phones.',
     },
   },
+  {
+    slug: 'mantis-field', genre: 'raising', players: '1P', date: '2026-11-03',
+    ja: {
+      title: 'カマキリ採集飼育帳 ― MANTIS FIELD',
+      desc: '草むらや木、林の落ち葉、南の島でカマキリをさがし、前脚の付け根の色や後翅を見て9種類を見分ける。ケースと足場を選んで飼育ケースを用意し、冬が来る前に成虫まで育てる。スマホ対応。',
+    },
+    en: {
+      title: 'Mantis Field',
+      desc: 'Search grass, trees, leaf litter and southern islands for mantises, then tell nine kinds apart by the color at the base of the forelegs, the hind wings and more. Pick a case and a foothold so they can molt, and raise them to adults before winter. Plays on phones.',
+    },
+  },
 ];

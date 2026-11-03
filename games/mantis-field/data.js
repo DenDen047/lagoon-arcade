@@ -1,0 +1,243 @@
+'use strict';
+/* カマキリ採集飼育帳 — 生き物・場所・飼育用品のデータ。
+   中身はスライド「カマキリ」(slides/カマキリ.pptx) に書かれていることだけで作る。
+   スライドに無い事実を足すときは、出どころをコメントに書く。 */
+
+// 1年は春・夏・秋・冬。1ターン = 1週間。週の数はゲームの都合で決めた値。
+const SEASONS = [
+  { name: '春', weeks: 5 },
+  { name: '夏', weeks: 5 },
+  { name: '秋', weeks: 5 },
+  { name: '冬', weeks: 3 },
+];
+const WINTER = 3;
+
+// 育ちの段階。frac は成虫の体長に対する割合 (ゲームの都合で決めた値)。
+const STAGES = [
+  { name: '小さい幼虫', frac: 0.3 },
+  { name: '中くらいの幼虫', frac: 0.5 },
+  { name: '大きい幼虫', frac: 0.72 },
+  { name: '成虫', frac: 1, adult: true },
+];
+const ADULT = 3;
+const MOLT_WEEKS = 3;       // 脱皮までの週数
+const SHELF_SLOTS = 6;      // 棚に置けるケースの数
+
+// これ以下の体長 (mm) を「小さい幼虫や小さい種」として扱う。排水溝ネットが向いている大きさ。
+const SMALL_LEN = 30;
+// プラカップは「小さい種類や幼虫の飼育で便利」。これを超えるとせまい。
+const CUP_MAX_LEN = 40;
+
+/* 種。text はスライドの文章 (体長の単位 cm はスライドの誤記なので mm に直した)。
+   coxa: 前脚の付け根の色 / hind: 後翅 (halfDark 半分くらい黒っぽい, clear 透明) /
+   spots: 前翅の白い紋 / bumps: 前脚基節のイボ状突起 / sternum: 前胸腹板 /
+   flaps: 中脚・後脚のヒレのような突起 / armPattern: 前脚の白と黒の模様 /
+   slender: 体が細長い / wings: short は翅が退化して小さい / colors: 体の色 */
+const SPECIES = [
+  {
+    id: 'oo', name: 'オオカマキリ', sci: 'Tenodera sinensis', family: 'カマキリ科Tenodera属', len: [70, 95],
+    coxa: 'yellow', hind: 'halfDark', colors: ['green', 'brown'],
+    keys: ['前脚の付け根あたりが黄色い', '後翅が半分くらい黒っぽい', '本州最大。沖縄にはいない'],
+    text: [
+      '本州最大の大型のカマキリで、セイタカアワダチソウなどやや高めの植物でよく見られます。',
+      'クワやクズなど大きめで丸い葉で高めの植物にも多く、イネ科を好むバッタがたくさんいるような細長い草が続いて丸い葉などの少ない草むらではあまり見つかりません。公園では低木のツツジにいることもあります。',
+      '同属で分布が重なるチョウセンカマキリとは、前脚の付け根あたりの部分が黄色い(チョウセンはオレンジ色)ことや後翅が半分くらい黒っぽいことなどで見分けられます。同属のマエモンカマキリは前脚の基部が薄いクリーム色で、後翅が全体的に透明です。なおマエモンカマキリは南西諸島(沖縄含む)に生息していますが、オオカマキリは沖縄には生息していません。',
+    ],
+  },
+  {
+    id: 'maemon', name: 'マエモンカマキリ', sci: 'Tenodera fasciata', family: 'カマキリ科Tenodera属', len: [75, 105],
+    coxa: 'cream', hind: 'clear', slender: true, colors: ['pale', 'brown'],
+    keys: ['前脚基部が薄いクリーム色', '後翅が透明', '体が細長い。日本最大で、南西諸島にいる'],
+    text: [
+      '日本最大のカマキリです。南西諸島に生息していて、同属のオオカマキリやチョウセンカマキリより体が細長いです。本種は前脚基部が薄いクリーム色で、後翅が透明ですが、前脚基部の色がやや近いオオカマキリは後翅が半分くらい黒っぽく、後翅の色が近いチョウセンカマキリは前脚基部がオレンジ色なことで見分けられます(後翅のスジでも見分けられます)。',
+      'イネ科の草原にも多く見られます。',
+      'カマキリは夜に照明にオスが飛んでくることもあり、写真の個体も草むらの近くのホテルの照明に飛んできてホテルの壁で見つかりました。',
+      '卵鞘はオオカマキリのと似ていますが全体的にオオカマキリよりやや丸っこいです。',
+    ],
+  },
+  {
+    id: 'chosen', name: 'チョウセンカマキリ', sci: 'Tenodera angustipennis', len: [65, 90],
+    coxa: 'orange', hind: 'clear', colors: ['green', 'brown'],
+    keys: ['前脚基部がオレンジ色', '後翅が透明', 'オオカマキリよりやや小さい。沖縄にもいる'],
+    text: [
+      '同属で類似するオオカマキリとは本種は前脚基部がオレンジ色であること、後翅が透明であることなどから見分けられます。また一般的にオオカマキリよりやや小さい傾向にあります。',
+      'オオカマキリは生息していない沖縄にも生息しています。',
+    ],
+  },
+  {
+    id: 'harabiro', name: 'ハラビロカマキリ', sci: 'Hierodula patellifera', family: 'カマキリ科Hierodula属', len: [45, 70],
+    bumps: 'yellow', spots: true, sternum: 'yellowPurple', wide: true, colors: ['green'],
+    keys: ['前翅に白い紋が一対ある', '前脚基節に黄色いイボ状突起 (3対が多い)', '前胸腹板が黄色く、紫の模様が入る'],
+    text: [
+      '主に樹上で生活する樹上性のカマキリです。ただし幼虫期は草や低木にも多く、大きくなってくると近くの木に移動して生活する個体が増えていく傾向が見られます。',
+      '前翅に白い紋が一対あり、前脚基節に黄色いイボ状突起があります。イボ状突起は3対の個体が多い傾向が見られます(東京の場合)が2個や4個の場合もあり、左右で数が違う個体もいます。',
+      '同属で外来種のムネアカハラビロカマキリは前脚基節のイボ状突起が小さく10個くらいあること、前胸腹板が赤っぽいこと(ハラビロカマキリは黄色く紫の模様が入る)、体長の差(一般的に傾向として10mmくらいムネアカが大きい)などで見分けられます。',
+    ],
+  },
+  {
+    id: 'muneaka', name: 'ムネアカハラビロカマキリ', family: 'カマキリ科Hierodula属 (外来種)', len: [55, 80], lenNote: 'ハラビロカマキリより10mmくらい大きい傾向',
+    bumps: 'small', spots: true, sternum: 'red', wide: true, colors: ['green'],
+    keys: ['前脚基節のイボ状突起が小さく、10個くらいある', '前胸腹板が赤っぽい', 'ハラビロカマキリより10mmくらい大きい傾向'],
+    // スライドではハラビロカマキリの見分け方として出てくる。ゲームの中の体長はハラビロカマキリ + 10mm にした (図鑑には lenNote を出す)
+    text: [
+      'ハラビロカマキリと同属の外来種です。',
+      '前脚基節のイボ状突起が小さく10個くらいあること、前胸腹板が赤っぽいこと(ハラビロカマキリは黄色く紫の模様が入る)、体長の差(一般的に傾向として10mmくらいムネアカが大きい)などでハラビロカマキリと見分けられます。',
+    ],
+  },
+  {
+    id: 'daito', name: 'ハラビロカマキリ大東諸島亜種', family: 'カマキリ科Hierodula属', len: [45, 70], lenNote: '',
+    bumps: 'none', spots: true, wide: true, colors: ['green'],
+    keys: ['前脚基節のイボ状突起がなく、その部分が白銀色', '大東島にいる'],
+    // 体長はスライドに無いので、ゲームの中ではハラビロカマキリと同じにした (図鑑には出さない)
+    text: [
+      '2021年に大東島に生息するのが亜種のハラビロカマキリ大東諸島亜種として記載されました。',
+      'ハラビロカマキリが亜種で分けられるのは世界初で、本亜種は前脚基節のイボ状突起が消失し、その部分が白銀色であるという特徴があります。',
+    ],
+  },
+  {
+    id: 'koka', name: 'コカマキリ', sci: 'Statilia maculata', len: [40, 60],
+    armPattern: true, colors: ['koka'],
+    keys: ['前脚に白と黒の模様がある', '多くは褐色型。色の濃さに個性がある', 'まれに緑色型もいる'],
+    text: [
+      '前脚に白と黒の模様があります。多くは褐色型ですが稀に緑色型が見つかります。',
+      '褐色型の中にも色に個性が大きく、同じ場所でも濃い茶色やクリーム色のような薄い個体がいます。',
+    ],
+  },
+  {
+    id: 'satsuma', name: 'サツマヒメカマキリ', sci: 'Acromantis satsumensis', len: [25, 35],
+    flaps: true, colors: ['satsuma'], overwinter: 'nymph',
+    keys: ['中脚・後脚にヒレのような突起がある', '幼虫で冬を越す (一部地域を除く)'],
+    text: [
+      '国産カマキリはほとんどの種で卵で冬を越しますが、サツマヒメカマキリの場合は一部地域を除き幼虫で越冬します。',
+      '同属のヒメカマキリより中脚・後脚のヒレのような突起が大きい傾向がありますが個体差があり、確実な識別は困難な場合があります。',
+    ],
+  },
+  {
+    id: 'hina', name: 'ヒナカマキリ', sci: 'Amantis nawai', len: [12, 18],
+    wings: 'short', colors: ['darkBrown'],
+    keys: ['日本最小 (12〜18mm)', '翅が退化して小さい', '林床の落ち葉にいる。緑色型はいない'],
+    text: [
+      '林床の落ち葉にいて、緑色型はいません。',
+      '日本最小のカマキリで、翅が退化して小さくなっていますが、海外では長翅型のオスが見つかっています。',
+    ],
+  },
+];
+const SP = Object.fromEntries(SPECIES.map((s) => [s.id, s]));
+
+// 卵鞘。スライドで形の違いが書かれているのはオオカマキリとマエモンカマキリだけ。
+const OOTHECAE = [
+  { id: 'oo', name: 'オオカマキリの卵鞘', shape: 'oo', note: 'マエモンカマキリの卵鞘より、やや丸っこくない' },
+  { id: 'maemon', name: 'マエモンカマキリの卵鞘', shape: 'round', note: 'オオカマキリの卵鞘と似ているが、全体的にやや丸っこい' },
+];
+
+/* 場所。finds は見つかるものと重み (none は何もいない)。
+   minStage / maxStage: ハラビロカマキリは「幼虫期は草や低木にも多く、大きくなってくると木に移動」。
+   light: 照明に飛んでくるオスの成虫だけ。 winter: 冬に見つかるもの (egg は卵鞘)。
+   コカマキリ・サツマヒメカマキリ・ムネアカハラビロカマキリはスライドに生息場所が無いので、
+   低い重みで置いた (ゲームの都合)。 */
+const REGIONS = [
+  { id: 'honshu', name: '本州 (家の近く)' },
+  { id: 'okinawa', name: '沖縄 (南西諸島)' },
+  { id: 'daito', name: '大東島' },
+];
+const PLACES = [
+  {
+    id: 'goldenrod', region: 'honshu', name: 'セイタカアワダチソウの草むら', note: 'やや高めの植物',
+    finds: [{ sp: 'oo', w: 3 }, { sp: 'chosen', w: 2 }, { sp: 'harabiro', w: 1, maxStage: 1 }, { sp: 'koka', w: 0.8 }, { none: 1.6 }],
+    winter: [{ egg: 'oo', w: 2 }, { none: 2 }],
+  },
+  {
+    id: 'kuzu', region: 'honshu', name: 'クワやクズのしげみ', note: '大きめで丸い葉の、高めの植物',
+    finds: [{ sp: 'oo', w: 3 }, { sp: 'harabiro', w: 1, maxStage: 1 }, { sp: 'koka', w: 0.8 }, { none: 1.6 }],
+    winter: [{ egg: 'oo', w: 2 }, { none: 2 }],
+  },
+  {
+    id: 'ine', region: 'honshu', name: 'イネ科の草むら', note: '細長い草が続いて、丸い葉の少ない草むら',
+    finds: [{ sp: 'oo', w: 0.4 }, { none: 4 }],
+    winter: [{ none: 1 }],
+  },
+  {
+    id: 'tsutsuji', region: 'honshu', name: '公園のツツジ', note: '低木',
+    finds: [{ sp: 'oo', w: 1.5 }, { sp: 'harabiro', w: 2.2, maxStage: 1 }, { sp: 'koka', w: 0.8 }, { sp: 'satsuma', w: 0.6 }, { none: 1.6 }],
+    winter: [{ egg: 'oo', w: 1 }, { sp: 'satsuma', w: 1.4 }, { none: 2 }],
+  },
+  {
+    id: 'tree', region: 'honshu', name: '公園の木', note: '木の上',
+    finds: [{ sp: 'harabiro', w: 3, minStage: 1 }, { sp: 'muneaka', w: 1, minStage: 1 }, { sp: 'satsuma', w: 0.6 }, { none: 1.6 }],
+    winter: [{ sp: 'satsuma', w: 1.4 }, { none: 2 }],
+  },
+  {
+    id: 'litter', region: 'honshu', name: '林の落ち葉', note: '林の地面 (林床) の落ち葉',
+    finds: [{ sp: 'hina', w: 3 }, { none: 1.6 }],
+    winter: [{ none: 1 }],
+  },
+  {
+    id: 'okiGrass', region: 'okinawa', name: 'イネ科の草原', note: '南の島の草原',
+    finds: [{ sp: 'maemon', w: 3 }, { sp: 'chosen', w: 1.5 }, { none: 1.4 }],
+    winter: [{ egg: 'maemon', w: 2 }, { none: 2 }],
+  },
+  {
+    id: 'okiLight', region: 'okinawa', name: 'ホテルの照明', note: '夜、草むらの近くのホテルの壁', night: true,
+    finds: [{ sp: 'maemon', w: 3, light: true }, { sp: 'chosen', w: 1.2, light: true }, { none: 1.4 }],
+    winter: [{ none: 1 }],
+  },
+  {
+    id: 'daito', region: 'daito', name: '大東島の草や木', note: '大東島',
+    finds: [{ sp: 'daito', w: 3 }, { none: 1.4 }],
+    winter: [{ none: 1 }],
+  },
+];
+const PLACE = Object.fromEntries(PLACES.map((p) => [p.id, p]));
+
+/* 飼育ケース。文章はスライド「飼育ケース」「足場」から。
+   grip: 脱皮のときのつかまりやすさ (null は足場で決まる) / see: 観察のしやすさ (0 見えにくい〜2) /
+   humid: 湿りやすい / small: 小さい種類や幼虫向け / feet: 足場を選ぶ / soil: 土を入れられる / stand: 縦置き・横置き */
+const CASES = [
+  {
+    id: 'plastic', name: 'プラスチック製飼育ケース', short: 'プラケース', grip: null, see: 2, feet: true, soil: true, stand: true,
+    text: '比較的安価で入手しやすく使いやすい。つかまりやすい場所が少ないものが多いので、基本的に足場を入れる。蓋に穴が多く通気性のいいものがおすすめ。百均で買えるものもおすすめ。',
+  },
+  {
+    id: 'kobae', name: '小さい穴の飼育ケース', short: 'コバエよけケース', grip: null, see: 2, feet: true, soil: true, stand: true, humid: true,
+    text: 'コバエが逃げたり入らず、適度に湿った環境を維持しやすい。カブトムシやクワガタの飼育に向いている。でも日本産カマキリはそこまで湿った環境を好むわけではない。',
+  },
+  {
+    id: 'mesh', name: 'メッシュ製虫かご', short: 'メッシュかご', grip: 3, see: 1, soil: true,
+    text: '全体がメッシュなのでカマキリが脱皮しやすく、基本的には何も入れなくても飼育できる。観察しにくくなることがあるが、1面が透明で観察しやすい製品もある。折りたためて軽く、持ち運びしやすい。',
+  },
+  {
+    id: 'net', name: '洗濯ネット', short: '洗濯ネット', grip: 3, see: 0, soil: false,
+    text: '工夫して飼育ケースに使える。全体がメッシュなので脱皮しやすいが、観察しにくい。',
+  },
+  {
+    id: 'cup', name: 'プラカップ', short: 'プラカップ', grip: null, see: 2, small: true, lids: true,
+    text: '飲み物を飲んだ後のカップやめんぼうの容器などを洗って使える。透明なので観察しやすい。小さい種類や幼虫の飼育で便利。',
+  },
+];
+const CASE = Object.fromEntries(CASES.map((c) => [c.id, c]));
+
+// 足場。grip は [小さい幼虫・小さい種, それより大きい] のつかまりやすさ (0〜3)。
+const FEET = [
+  { id: 'none', name: '入れない', grip: [0, 0], text: 'つかまりやすい場所が少ない。' },
+  { id: 'hachi', name: '鉢底ネット', grip: [2, 3], text: '本来は園芸用で植木鉢の底の穴に敷くもの。符節のツメを引っかけることができる。' },
+  { id: 'drain', name: '排水溝ネット', grip: [3, 2], text: 'やわらかいので爪が傷みにくく、特に小さい幼虫や小さい種の足場に適している。' },
+  { id: 'wood', name: '木パッキン', grip: [2, 2], text: '鉢底ネットと同じように足場として入れられる。' },
+];
+const FOOT = Object.fromEntries(FEET.map((f) => [f.id, f]));
+
+// プラカップのフタ。feet はそれが足場になるもの。
+const LIDS = [
+  { id: 'plain', name: 'ふつうのフタ', feet: 'none', text: 'つかまる場所がない。' },
+  { id: 'drainTop', name: 'フタのかわりに排水溝ネット＋輪ゴム', feet: 'drain', text: '小さい幼虫の足場になる。' },
+  { id: 'cross', name: '十字の穴のフタ＋排水溝ネット', feet: 'drain', text: '飲み物用のストローをさす十字の穴に排水溝ネットをつけて、足場にできる。' },
+  { id: 'flipHachi', name: 'フタなしで逆さに置く＋鉢底ネット', feet: 'hachi', flip: true, text: '上下逆さに置いて、中に足場を入れる。' },
+  { id: 'flipWood', name: 'フタなしで逆さに置く＋木パッキン', feet: 'wood', flip: true, text: '上下逆さに置いて、中に足場を入れる。' },
+];
+const LID = Object.fromEntries(LIDS.map((l) => [l.id, l]));
+
+// 脱皮がうまくいく確率。つかまりやすさ (0〜3) ごと。数値はゲームの都合で決めた値。
+const MOLT_OK = [0.35, 0.6, 0.85, 0.97];
+
+// 1週間で変わる「げんき」。数値はゲームの都合で決めた値。0 のものは気になることに出すだけで、げんきは減らない。
+// 足場がないこと・小さい体に鉢底ネットを使うことは、脱皮のしやすさ (MOLT_OK) だけに効く。
+const HEALTH = { rest: 6, humid: -3, soil: -3, cramped: -5, hardNet: 0, noGrip: 0, moltFail: -25 };

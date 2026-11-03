@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#5a4630" />
+<title>カマキリ採集飼育帳 ― MANTIS FIELD</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔎</text></svg>" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<!-- ふだんの画面 (ケースの棚) -->
+<div id="hud" class="hidden">
+  <header id="top" class="panel">
+    <div class="row">
+      <b id="mDate"></b><span class="spacer"></span>
+      <span id="mStars" class="chip"></span><span id="mEggs" class="chip hidden"></span>
+    </div>
+    <p class="hint">ケースをタップすると、中のようすを見られる</p>
+  </header>
+  <div id="log" class="panel"></div>
+  <nav id="actions">
+    <button data-act="search"><span>🔎</span><small>さがしに行く</small></button>
+    <button data-act="dex"><span>📖</span><small>図鑑</small></button>
+    <button data-act="next" class="next"><span>▶</span><small>1週間すすめる</small></button>
+  </nav>
+</div>
+
+<!-- さがしに行った先 -->
+<div id="fieldUI" class="hidden">
+  <div id="fieldInfo" class="panel"></div>
+  <nav id="fieldBtns"></nav>
+</div>
+
+<div id="modal" class="hidden"><div class="card" id="modalCard"></div></div>
+
+<script src="data.js"></script>
+<script src="art.js"></script>
+<script src="main.js"></script>
+</body>
+</html>

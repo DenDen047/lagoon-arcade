@@ -19,7 +19,9 @@
 
 ## 自分たちで作ったもの
 
-上に書いていないものはすべて Lagoon Arcade が作りました。mantis-keeper と harabiro-keeper の絵はすべてプログラムで描いていて、画像ファイルも音声ファイルもありません。
+上に書いていないものはすべて Lagoon Arcade が作りました。mantis-keeper と harabiro-keeper と mantis-field の絵はすべてプログラムで描いていて、画像ファイルも音声ファイルもありません。
+
+mantis-field の生き物と飼い方の説明は、スライド資料「カマキリ」(`games/mantis-field/slides/カマキリ.pptx`) の文章をもとにしています。スライドの写真はゲームに入れていません。スライドの本体は Git LFS で自前のサーバーに置いていて、公開ページからは読めません。
 
 ## 新しく素材を足すときの手順
 

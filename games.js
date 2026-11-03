@@ -16,4 +16,15 @@ const GAMES = [
       desc: 'Raise a Chinese mantis from a tiny nymph until she lays an egg case, and carry the line on to the next generation. Plays on phones.',
     },
   },
+  {
+    slug: 'harabiro-keeper', genre: 'raising', players: '1P', date: '2026-11-03',
+    ja: {
+      title: 'ハラビロカマキリ飼育日記 ― HARABIRO KEEPER',
+      desc: '木の上でくらすハラビロカマキリを1齢の幼虫から育てる育成ゲーム。季節で変わるエサとケースの温度に気をつけて、卵鞘を産ませて次の世代へつなぐ。スマホ対応。',
+    },
+    en: {
+      title: 'Harabiro Keeper',
+      desc: 'Raise a tree-dwelling broad-bellied mantis (Hierodula patellifera) from a nymph. Watch the seasons, the prey you can catch, and the temperature of the case, then carry the line on through her egg cases. Plays on phones.',
+    },
+  },
 ];

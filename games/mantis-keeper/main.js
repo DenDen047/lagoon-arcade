@@ -263,6 +263,8 @@ function endLife(cause, note) {
   g.lineage.push({
     line: g.line, gen: g.gen, name: m.name, sex: sexKnown(m) ? sexName(m.sex) : '性別不明',
     stage: STAGES[m.stage].name, from: m.from, year: g.year, end: dateText(g.doy), cause, left: offspringText(m),
+    // 家系図に描くための記録。卵鞘のゆくえ (next / winter) は冬と春に書き足す
+    color: m.color, mate: mateText(m), eggs: eggCount(g.oothecae), done: false,
   });
   g.m = null;
   save();
@@ -286,15 +288,17 @@ function winter() {
 }
 
 function warmRoom() {
-  const g = game;
+  const g = game, last = g.lineage[g.lineage.length - 1];
   g.oothecae.splice(g.oothecae.findIndex((o) => o.fertile), 1);
+  if (last && last.eggs) last.eggs.winter++;
   save();
   modal('1月', '<p>あたたかい部屋に置いた卵鞘から、真冬なのに幼虫が生まれてきてしまった。外には、幼虫が食べられる小さな虫がいない…</p><p class="sub">卵鞘は冬の寒さに当てておくと、春になってから孵化する。</p>',
     [{ label: '次へ', onClick: winter }]);
 }
 
 function spring(ootheca) {
-  const g = game;
+  const g = game, last = g.lineage[g.lineage.length - 1];
+  if (last && last.eggs) { if (ootheca) last.eggs.next = 1; last.done = true; }
   if (ootheca) g.gen++;
   else { g.line++; g.gen = 1; }
   g.year++;
@@ -558,8 +562,9 @@ function actLook() {
   if (isAdult(m) && m.sex === 'M') tips.push(m.mated ? '交尾ずみ。' : m.adultTurns >= 2 ? 'お見合いに行ける。' : 'もう少ししたら、お見合いに行ける。');
   const btns = [];
   if (!sexKnown(m) && m.stage >= SEX_VISIBLE_STAGE) btns.push({ label: 'おなかの節を数える', cls: 'pink', onClick: sexQuiz });
-  btns.push({ label: '家系の記録', onClick: () => showLineage(actLook) }, { label: 'タイトルにもどる', onClick: titleScreen }, { label: 'とじる' });
-  modal(`${esc(m.name)}のようす`, `<p>${STAGES[m.stage].name}・体長 約${bodyLength(m)}mm・${m.color === 'green' ? '緑色' : '茶色'}・${sexLabel(m)}</p>${tips.map((t) => `<p class="sub">${t}</p>`).join('')}`, btns);
+  btns.push({ label: 'タイトルにもどる', onClick: titleScreen }, { label: 'とじる' });
+  const card = modal(`${esc(m.name)}のようす`, `<p>${STAGES[m.stage].name}・体長 約${bodyLength(m)}mm・${m.color === 'green' ? '緑色' : '茶色'}・${sexLabel(m)}</p>${tips.map((t) => `<p class="sub">${t}</p>`).join('')}<h3>家系図</h3><div class="tree"><canvas></canvas></div>`, btns);
+  drawFamilyTree(card.querySelector('.tree canvas'));
 }
 
 function sexQuiz() {
@@ -579,8 +584,185 @@ function sexQuiz() {
 }
 
 function showLineage(back) {
-  const rows = game.lineage.map((e) => `<div class="lineage"><span class="gen">${e.line > 1 ? `${e.line}系統 ` : ''}第${e.gen}世代</span><b>${esc(e.name)}</b>（${e.sex}・${e.stage}）<small>${esc(e.from)}から生まれた。${e.year}年目の${e.end}に${esc(e.cause)}。</small><small>のこしたもの: ${e.left}</small></div>`).join('');
-  modal('家系の記録', rows || '<p>まだ記録はない。</p>', [{ label: 'とじる', onClick: back }]);
+  const card = modal('家系図', '<div class="tree"><canvas></canvas></div>', [{ label: 'とじる', onClick: back }]);
+  drawFamilyTree(card.querySelector('.tree canvas'));
+}
+
+/* ---------------- 家系図 ---------------- */
+// 系統ごとに、野外で見つけた卵鞘を根にして「親 → 卵鞘 → 子」と下へのばす。
+// 次の世代につながった卵鞘は左の幹に置き、ほかの卵鞘は右へ枝分かれさせる。
+const EGG_LABEL = { winter: ['真冬に', '孵化した'], spring: ['春に', '孵化した'], wait: ['春を', '待っている'], dud: ['幼虫は', '生まれない'] };
+const SEX_CODE = { メス: 'F', オス: 'M' };
+
+function mateText(m) {
+  if (!m.mated) return null;
+  return m.sex === 'F' ? '迎えたオス' : 'お見合い相手のメス';
+}
+function eggCount(list) {
+  const fertile = list.filter((o) => o.fertile).length;
+  return { fertile, dud: list.length - fertile, winter: 0, next: 0 };
+}
+
+// いま育てている1匹も、家系図のいちばん下に足す
+function treeNodes() {
+  const g = game, nodes = g.lineage.map((e) => ({ ...e, now: false }));
+  if (g.m) {
+    const m = g.m;
+    nodes.push({ line: g.line, gen: g.gen, name: m.name, sex: sexKnown(m) ? sexName(m.sex) : '性別？', sexCode: m.sex, stage: STAGES[m.stage].name,
+      year: g.year, color: m.color, mate: mateText(m), eggs: eggCount(g.oothecae), done: false, now: true });
+  }
+  return nodes;
+}
+
+// 卵鞘をゆくえごとにまとめる。古いセーブには卵鞘の記録がないので、子がいれば1個だけ描く
+function eggGroups(n, hasChild) {
+  if (!n.eggs) return hasChild ? [{ kind: 'next', n: 1 }] : [];
+  const e = n.eggs, out = [], next = hasChild || e.next ? 1 : 0;
+  if (next) out.push({ kind: 'next', n: 1 });
+  if (e.winter) out.push({ kind: 'winter', n: e.winter });
+  const rest = e.fertile - next - e.winter;
+  if (rest > 0) out.push({ kind: n.done ? 'spring' : 'wait', n: rest });
+  if (e.dud) out.push({ kind: 'dud', n: e.dud });
+  return out;
+}
+
+function wrapText(c2, s, maxW) {
+  const out = [];
+  let cur = '';
+  for (const ch of s) {
+    if (cur && c2.measureText(cur + ch).width > maxW) { out.push(cur); cur = ch; } else cur += ch;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+function nodeLines(c2, n, maxW) {
+  const out = [{ s: `${n.sex}・${n.stage}`, c: '#45573f' }];
+  const life = n.now ? 'いま育てている' : `${n.year}年目の${n.end}に${n.cause}`;
+  for (const s of wrapText(c2, life, maxW)) out.push({ s, c: n.now ? '#b5476a' : '#5d6b57' });
+  if (n.mate) out.push({ s: `交尾の相手: ${n.mate}`, c: '#b5476a' });
+  if (!n.eggs && n.left && n.left !== 'なし') for (const s of wrapText(c2, `のこしたもの: ${n.left}`, maxW)) out.push({ s, c: '#5d6b57' });
+  return out;
+}
+
+function drawFamilyTree(cv) {
+  const nodes = treeNodes();
+  const font = getComputedStyle(document.body).fontFamily;
+  const cw = Math.max(260, Math.floor(cv.parentElement.clientWidth));
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const c2 = cv.getContext('2d');
+  const SPINE = 34, BX = 4, BW = cw - 8, TX = BX + 64, GAP = Math.min(76, (cw - SPINE - 40) / 3);
+  const lineIds = [...new Set(nodes.map((n) => n.line))];
+
+  // 1. 並べる場所を決める
+  c2.font = `12px ${font}`;
+  const items = [];
+  let y = 4;
+  lineIds.forEach((ln, li) => {
+    const row = nodes.filter((n) => n.line === ln).sort((a, b) => a.gen - b.gen);
+    if (li) y += 18;
+    items.push({ t: 'root', y, ln, year: row[0].year });
+    y += 44;
+    row.forEach((n, i) => {
+      const child = row[i + 1] && row[i + 1].gen === n.gen + 1;
+      const text = nodeLines(c2, n, BW - (TX - BX) - 8);
+      const h = Math.max(60, 30 + text.length * 16);
+      items.push({ t: 'box', y, h, n, text });
+      y += h;
+      const groups = eggGroups(n, child);
+      if (!groups.length) return;
+      const sides = groups.length > 1 || groups[0].kind !== 'next';
+      const h2 = sides ? 66 : 36;
+      items.push({ t: 'eggs', y, h: h2, groups, cont: child, sides });
+      y += h2;
+    });
+  });
+  if (!nodes.length) y = 40;
+
+  // 2. 描く
+  cv.width = Math.round(cw * dpr);
+  cv.height = Math.round(y * dpr);
+  cv.style.width = `${cw}px`;
+  cv.style.height = `${y}px`;
+  c2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c2.textBaseline = 'middle';
+  const LINE = '#8fa384';
+  const vline = (x, y0, y1) => { c2.strokeStyle = LINE; c2.lineWidth = 2; c2.beginPath(); c2.moveTo(x, y0); c2.lineTo(x, y1); c2.stroke(); };
+  if (!nodes.length) {
+    c2.fillStyle = '#5d6b57';
+    c2.font = `14px ${font}`;
+    c2.fillText('まだ記録はない。', 4, 20);
+    return;
+  }
+  for (const it of items) {
+    if (it.t === 'root') {
+      vline(SPINE, it.y + 20, it.y + 44);
+      Art.ootheca(c2, SPINE, it.y + 14, 26);
+      c2.textAlign = 'left';
+      c2.fillStyle = '#1f2a1c';
+      c2.font = `bold 13px ${font}`;
+      c2.fillText('野外で見つけた卵鞘', SPINE + 22, it.y + 9);
+      c2.fillStyle = '#5d6b57';
+      c2.font = `11px ${font}`;
+      c2.fillText(`${lineIds.length > 1 ? `${it.ln}系統め・` : ''}${it.year}年目の春`, SPINE + 22, it.y + 25);
+    } else if (it.t === 'box') {
+      const n = it.n;
+      Art.roundRect(c2, BX, it.y, BW, it.h, 12);
+      c2.fillStyle = n.now ? '#fff1f5' : '#fffdf4';
+      c2.fill();
+      c2.strokeStyle = n.now ? '#b5476a' : '#2f5d34';
+      c2.lineWidth = 2;
+      c2.stroke();
+      // 一生を終えたときのすがた
+      let idx = STAGES.findIndex((s) => s.name === n.stage);
+      if (idx < 0) idx = 0;
+      const adult = !!STAGES[idx].adult, sex = n.sexCode || SEX_CODE[n.sex] || 'F';
+      const len = adult ? ADULT_LENGTH[sex] : STAGES[idx].length;
+      const px = BX + 32, py = it.y + it.h / 2 + 14;
+      c2.fillStyle = '#7a5a3a';
+      c2.fillRect(px - 24, py, 48, 2.5);
+      Art.mantis(c2, px, py, 0.44 * (0.45 + 0.55 * len / ADULT_LENGTH.F), { stage: idx, adult, sex, color: n.color || 'green', aim: 0, t: 0 });
+      // 名前と世代
+      c2.textAlign = 'left';
+      c2.font = `bold 11px ${font}`;
+      const badge = `${n.line > 1 ? `${n.line}系統 ` : ''}第${n.gen}世代`, bw = c2.measureText(badge).width + 12;
+      Art.roundRect(c2, TX, it.y + 8, bw, 18, 9);
+      c2.fillStyle = '#2f5d34';
+      c2.fill();
+      c2.fillStyle = '#fff';
+      c2.fillText(badge, TX + 6, it.y + 17.5);
+      c2.fillStyle = '#1f2a1c';
+      c2.font = `bold 15px ${font}`;
+      c2.fillText(n.name, TX + bw + 6, it.y + 17.5);
+      c2.font = `12px ${font}`;
+      it.text.forEach((l, i) => { c2.fillStyle = l.c; c2.fillText(l.s, TX, it.y + 36 + i * 16); });
+    } else {
+      const busY = it.y + 12, iconY = it.sides ? it.y + 26 : it.y + 18;
+      const xs = it.groups.map((_, i) => SPINE + i * GAP);
+      vline(SPINE, it.y, it.cont ? it.y + it.h : busY);
+      if (it.groups.length > 1) {
+        c2.beginPath();
+        c2.moveTo(SPINE, busY);
+        c2.lineTo(xs[xs.length - 1], busY);
+        c2.stroke();
+      }
+      it.groups.forEach((gr, i) => {
+        vline(xs[i], busY, iconY);
+        Art.ootheca(c2, xs[i], iconY, 24);
+        c2.textAlign = 'left';
+        if (gr.n > 1) {
+          c2.fillStyle = '#1f2a1c';
+          c2.font = `bold 11px ${font}`;
+          c2.fillText(`×${gr.n}`, xs[i] + 15, iconY + 1);
+        }
+        if (gr.kind === 'next') return;
+        c2.textAlign = 'center';
+        c2.fillStyle = gr.kind === 'dud' ? '#8a8a80' : '#45573f';
+        c2.font = `11px ${font}`;
+        EGG_LABEL[gr.kind].forEach((s, k) => c2.fillText(s, xs[i], iconY + 17 + k * 13));
+      });
+    }
+  }
 }
 
 /* ---------------- タイトル ---------------- */

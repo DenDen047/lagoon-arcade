@@ -183,18 +183,24 @@ function molt() {
   return false;
 }
 
+// 卵鞘を産む確率。はじめはほぼ確実で、産むほど下がる (1個目 100%・4個目 75%・6個目 31%・7個目から 5%)
+const layChance = (laid) => Math.max(LAY_MIN_CHANCE, 1 - (laid / LAY_FADE) ** 2);
+
 function adultTurn() {
   const g = game, m = g.m;
   m.adultTurns++;
   if (m.sex === 'F') {
     // 交尾していなくても卵鞘は産む。ただし幼虫は生まれない
     const ready = m.adultTurns >= (m.mated ? 4 : 8);
+    // 3ターンごとに産む機会がある。産んだ数が多いほど、産まずに終わることが増える
     if (ready && m.hunger >= 40 && ++m.eggProgress >= 3) {
       m.eggProgress = 0;
-      m.laid++;
-      if (m.mated) m.fertileLaid++;
-      g.oothecae.push({ fertile: m.mated, mother: m.name });
-      say(m.mated ? `${m.name}が卵鞘を産んだ！ この中に200個ほどの卵が入っている。` : `${m.name}が卵鞘を産んだ。でも交尾していないので、この卵鞘から幼虫は生まれない。`);
+      if (Math.random() < layChance(m.laid)) {
+        m.laid++;
+        if (m.mated) m.fertileLaid++;
+        g.oothecae.push({ fertile: m.mated, mother: m.name });
+        say(m.mated ? `${m.name}が卵鞘を産んだ！ この中に200個ほどの卵が入っている。` : `${m.name}が卵鞘を産んだ。でも交尾していないので、この卵鞘から幼虫は生まれない。`);
+      }
     }
   } else if (m.partnerTimer > 0 && --m.partnerTimer === 0) {
     g.oothecae.push({ fertile: true, mother: 'お見合い相手のメス' });
@@ -558,7 +564,7 @@ function actLook() {
   if (!isAdult(m) && m.state === 'normal' && m.growth >= STAGES[m.stage].need) tips.push('よく食べている。そろそろ脱皮しそうだ。');
   if (m.injury) tips.push('脱皮の失敗であしが曲がっていて、カマのとどく範囲がせまい。次の脱皮がうまくいけば、少しよくなる。');
   if (!sexKnown(m)) tips.push(m.stage >= SEX_VISIBLE_STAGE ? 'おなかの節が数えられる大きさになった。' : '性別は、5齢くらいになるとおなかの節の数でわかる。');
-  if (isAdult(m) && m.sex === 'F') tips.push(m.mated ? `交尾ずみ。よく食べさせると卵鞘を産む（いままでに${m.laid}個）。` : m.adultTurns >= 3 ? 'オスを迎えられる。' : '成虫になって10日ほどたつと、オスを迎えられる。');
+  if (isAdult(m) && m.sex === 'F') tips.push(m.mated ? `交尾ずみ。よく食べさせると卵鞘を産む（いままでに${m.laid}個）。${m.laid >= 4 ? 'たくさん産んだので、だんだん産まなくなってきた。' : ''}` : m.adultTurns >= 3 ? 'オスを迎えられる。' : '成虫になって10日ほどたつと、オスを迎えられる。');
   if (isAdult(m) && m.sex === 'M') tips.push(m.mated ? '交尾ずみ。' : m.adultTurns >= 2 ? 'お見合いに行ける。' : 'もう少ししたら、お見合いに行ける。');
   const btns = [];
   if (!sexKnown(m) && m.stage >= SEX_VISIBLE_STAGE) btns.push({ label: 'おなかの節を数える', cls: 'pink', onClick: sexQuiz });

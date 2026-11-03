@@ -50,6 +50,10 @@ const MIST_AMOUNT = 30;
 const CLEAN_DECAY = 8;
 const LEFTOVER_DIRT = 12;           // 残ったエサの虫1匹あたり
 
+// 卵鞘は産むほど産みにくくなる。LAY_FADE 個に近づくほど産む確率が下がり、そこから先は LAY_MIN_CHANCE だけ残る
+const LAY_FADE = 6;
+const LAY_MIN_CHANCE = 0.05;
+
 // しめり気の目安。乾きすぎると脱皮に失敗し、湿りすぎるとカビが生える。
 const MOIST_MOLT_MIN = 35;
 const MOIST_MOLD = 85;

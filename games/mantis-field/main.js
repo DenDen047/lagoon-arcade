@@ -58,8 +58,31 @@ function feetOf(setup) {
 function gripOf(m) {
   const c = CASE[m.setup.kind];
   if (c.grip !== null) return c.grip;
-  return FOOT[feetOf(m.setup)].grip[len(m) <= SMALL_LEN ? 0 : 1];
+  let g = FOOT[feetOf(m.setup)].grip[len(m) <= SMALL_LEN ? 0 : 1];
+  if (c.stand && m.setup.lidNet) g = Math.max(g, LID_NET[m.setup.stand]);
+  return g;
 }
+
+/* 縦置きと横置き・ケースの大きさ・エサの与え方 (スライド「縦置きと横置き」) */
+const standCase = (setup) => !!CASE[setup.kind].stand;
+const sizeOf = (setup) => CASE_SIZE[setup.size || 'S'];
+// ケースの中の高さ (mm)。縦置きにすると、横置きの横幅が高さになる
+const roofMM = (setup) => sizeOf(setup).mm[setup.stand === 'tate' ? 0 : 1];
+const nextLen = (m) => Math.round(m.adultLen * STAGES[Math.min(ADULT, m.stage + 1)].frac);
+const needRoof = (m) => nextLen(m) * MOLT_HEIGHT;
+const lowRoof = (m) => standCase(m.setup) && m.stage < ADULT && roofMM(m.setup) < needRoof(m);
+const feedOf = (setup) => (standCase(setup) ? setup.feed || 'direct' : 'direct');
+// エサの虫を見張る必要があるか。tate: 縦置きでフタまですぐ行ける / feet: 底からフタまで足場がある
+function watchReason(setup) {
+  if (!standCase(setup) || feedOf(setup) === 'dish') return null;
+  if (setup.stand === 'tate') return 'tate';
+  if (setup.feet && setup.feet !== 'none') return 'feet';
+  return null;
+}
+const WATCH_TEXT = {
+  tate: '縦置きなので、エサの虫がすぐにフタの位置まで移動できる。フタの穴から脱走したり、足場に隠れたりしやすい。',
+  feet: '底からフタまで足場があるので、エサの虫が足場をつたってフタまで行ける。',
+};
 
 // ケースの気になるところ。どれもスライドに書かれていること
 function issues(m) {
@@ -68,8 +91,10 @@ function issues(m) {
   if (c.humid) list.push({ k: 'humid', text: 'ケースの中がしめっぽい。日本産カマキリは、そこまで湿った環境を好むわけではない。' });
   if (m.setup.soil && c.soil) list.push({ k: 'soil', text: '土からコバエが増えている。土は入れなくていい。' });
   if (c.small && L > CUP_MAX_LEN) list.push({ k: 'cramped', text: 'カップがせまそう。プラカップは小さい種類や幼虫の飼育で便利。' });
+  if (lowRoof(m)) list.push({ k: 'lowRoof', text: `カマキリは脱皮に高さが必要。このケースの高さ (約${roofMM(m.setup)}mm) では、次の脱皮には足りないかも。縦置きにするか、大きめのケースにしよう。` });
   if (c.grip === null) {
-    if (feet === 'none') list.push({ k: 'noGrip', text: 'つかまりやすい場所が少ない。足場を入れよう。' });
+    const lidFoot = c.stand && m.setup.lidNet && LID_NET[m.setup.stand] > 0;
+    if (feet === 'none' && !lidFoot) list.push({ k: 'noGrip', text: 'つかまりやすい場所が少ない。足場を入れよう。' });
     else if (feet === 'hachi' && L <= SMALL_LEN) list.push({ k: 'hardNet', text: '小さい幼虫や小さい種には、やわらかくて爪が傷みにくい排水溝ネットが適している。' });
   }
   return list;
@@ -79,8 +104,10 @@ function setupText(setup) {
   const c = CASE[setup.kind];
   if (setup.kind === 'cup') return `${c.short}・${LID[setup.lid].name}`;
   let s = c.short;
-  if (c.stand) s += setup.stand === 'tate' ? ' (縦置き)' : ' (横置き)';
+  if (c.stand) s += ` (${sizeOf(setup).name}・${setup.stand === 'tate' ? '縦置き' : '横置き'})`;
   if (c.feet) s += `・足場: ${FOOT[setup.feet].id === 'none' ? 'なし' : FOOT[setup.feet].name}`;
+  if (c.stand && setup.lidNet) s += '・フタにネット';
+  if (c.stand) s += `・エサ: ${FEED[feedOf(setup)].name}`;
   if (setup.soil && c.soil) s += '・土あり';
   return s;
 }
@@ -106,6 +133,18 @@ const starCount = () => SPECIES.filter((s) => game.dex[s.id].ided).length;
 
 /* ---------------- 1週間すすめる ---------------- */
 function actNext() {
+  const hungry = game.season !== WINTER && game.shelf.filter((m) => m && !m.fed);
+  if (hungry && hungry.length) {
+    modal('まだエサをあげていない', `<p>${hungry.map((m) => `No.${m.no}`).join('、')} は、今週まだエサを食べていない。エサを食べられなかった週は育たず、げんきが減る。</p>`, [
+      { label: 'エサをあげる', cls: 'next', onClick: actFeed },
+      { label: 'このまま1週間すすめる', onClick: advanceWeek },
+    ]);
+    return;
+  }
+  advanceWeek();
+}
+
+function advanceWeek() {
   const events = [];
   const winterNow = game.season === WINTER;
   game.shelf.forEach((m, i) => {
@@ -120,11 +159,19 @@ function actNext() {
     if (before >= 40 && m.health < 40 && m.health > 0 && CASE[m.setup.kind].see > 0) {
       events.push(`No.${m.no} ${sp.name}が弱ってきた。ケースをタップして、気になることを見てみよう。`);
     }
+    // エサを食べられなかった週は育たない
+    const ate = winterNow || m.fed;
+    if (!ate) {
+      m.health = clamp(m.health + HUNGRY);
+      events.push(`No.${m.no} ${sp.name}は、今週エサを食べられなかった。`);
+    }
+    m.fed = false;
     // 冬は育たない (幼虫で冬を越すサツマヒメカマキリも、春まで脱皮しない)
-    if (m.stage < ADULT && !winterNow) {
+    if (m.stage < ADULT && !winterNow && ate) {
       m.toMolt--;
       if (m.toMolt <= 0) {
-        if (Math.random() < MOLT_OK[gripOf(m)]) {
+        const roof = lowRoof(m);
+        if (Math.random() < MOLT_OK[gripOf(m)] * (roof ? LOW_ROOF_MOLT : 1)) {
           m.stage++;
           m.toMolt = MOLT_WEEKS;
           m.shed = true;
@@ -139,7 +186,7 @@ function actNext() {
           m.health = clamp(m.health + HEALTH.moltFail);
           m.toMolt = 1;
           m.moltFail = true;
-          events.push(`No.${m.no} ${sp.name}は、うまくつかまれず脱皮に失敗した…。`);
+          events.push(roof ? `No.${m.no} ${sp.name}は、ケースの高さが足りず脱皮に失敗した…。` : `No.${m.no} ${sp.name}は、うまくつかまれず脱皮に失敗した…。`);
         }
       }
     }
@@ -241,6 +288,175 @@ function placeMantis(m, setup) {
   game.shelf[i] = m;
   say(`No.${m.no} ${SP[m.sp].name}を棚に置いた。`);
   save();
+}
+
+/* ---------------- エサをあげる ---------------- */
+function feedLine(m) {
+  const head = `No.${m.no} ${SP[m.sp].name}`;
+  if (feedOf(m.setup) === 'dish') return `${head}: エサの虫をカップに入れて置いた。脱走も隠れることもなく、入れたままで食べてくれた。`;
+  if (standCase(m.setup)) return `${head}: ツルツルした壁をエサの虫は登れないので、見張らなくても食べてくれた。`;
+  return `${head}: エサの虫を入れたら、食べてくれた。`;
+}
+
+function actFeed() {
+  if (game.season === WINTER) { modal('エサをあげる', '<p>このゲームでは、冬のあいだは育たないので、エサはあげなくていいことにしている。</p>'); return; }
+  const todo = game.shelf.map((m, i) => ({ m, i })).filter((o) => o.m && !o.m.fed);
+  if (!todo.length) { modal('エサをあげる', `<p>${game.shelf.some(Boolean) ? '今週は、みんなもうエサを食べた。' : '棚にカマキリがいない。'}</p>`); return; }
+  const lines = [], watch = [];
+  for (const { m, i } of todo) {
+    if (watchReason(m.setup)) watch.push(i);
+    else { m.fed = true; lines.push(feedLine(m)); }
+  }
+  save();
+  renderHUD();
+  let html = lines.map((l) => `<p>${esc(l)}</p>`).join('');
+  if (watch.length) {
+    html += `<h3>見張りが必要なケース</h3><ul>${watch.map((i) => `<li>No.${game.shelf[i].no} ${esc(SP[game.shelf[i].sp].name)}: ${esc(WATCH_TEXT[watchReason(game.shelf[i].setup)])}</li>`).join('')}</ul>
+      <p class="sub">エサの虫をカップやタッパーに入れて置くか、横置きで底からフタまでの足場をなくすと、見張らなくてよくなる。</p>`;
+  }
+  modal('エサをあげる<small>FEED</small>', html, watch.length
+    ? [{ label: '見張ってエサをあげる', cls: 'next', onClick: () => watchQueue(watch) }, { label: 'あとで' }]
+    : [{ label: 'とじる' }]);
+}
+
+function watchQueue(list) {
+  if (!list.length) return;
+  feedWatch(list[0], () => watchQueue(list.slice(1)));
+}
+
+/* 見張ってエサをあげる。エサの虫はフタのほうへ逃げたり足場に隠れたりするので、
+   タップしてカマキリの前に移動させる (スライド「縦置きと横置き」の、餌の虫を移動させる・見張る) */
+function feedWatch(i, next) {
+  const m = game.shelf[i];
+  if (!m) { if (next) next(); return; }
+  const sp = SP[m.sp], reason = watchReason(m.setup), food = pick(FOODS);
+  const card = openModal();
+  card.innerHTML = `<h2>見張ってエサをあげる<small>No.${m.no} ${esc(sp.name)}・エサ: ${esc(food)}</small></h2>
+    <p class="sub">${esc(WATCH_TEXT[reason])}エサの虫をタップして、カマキリの前に移動させよう。</p>
+    <div class="panelBox"></div><p class="feat"></p><div class="btns"></div>`;
+  const pw = Math.min(340, window.innerWidth - 80), ph = Math.round(pw * (m.setup.stand === 'tate' ? 1.05 : 0.8));
+  const { cv, c2 } = makeCanvas(pw, ph);
+  cv.style.touchAction = 'none';
+  card.querySelector('.panelBox').append(cv);
+  const feat = card.querySelector('.feat');
+  const btns = card.querySelector('.btns');
+  // 小さめのケースも大きく見えるように、枠を広げて描く
+  const zoom = (m.setup.size || 'S') === 'S' ? 1.25 : 1;
+  const bw = pw * 0.9 * zoom, bh = (ph * 0.96 - 12) * zoom;
+  const box = { x: (pw - bw) / 2, y: ph * 0.96 - 12 - bh, w: bw, h: bh };
+  const geo = Art.caseGeom(box, m.setup, len(m));
+  const bugR = Math.max(7, geo.inner.w * 0.045);
+  const floorY = geo.floorY - bugR * 0.5;
+  // エサの虫が向かう道すじ。最後の点まで行くと脱走する (または足場に隠れる)
+  let path;
+  if (reason === 'tate') {
+    const lx = geo.lid.x - bugR;
+    path = [{ x: lx, y: floorY }, { x: lx, y: geo.lid.y + geo.lid.h * 0.35 }];
+  } else {
+    const sx = geo.sheet.x + geo.sheet.w * 0.5;
+    path = [{ x: sx, y: floorY }, { x: sx, y: geo.inner.y + bugR }, { x: geo.inner.x + geo.inner.w * 0.85, y: geo.inner.y + bugR }];
+  }
+  const hideSpot = geo.sheet ? { x: geo.sheet.x + geo.sheet.w * 0.3, y: floorY - geo.sheet.h * 0.15 } : null;
+  // 足場があると、しばらく走ったあと足場に隠れることがある
+  const hideAt = (t) => (hideSpot && Math.random() < 0.45 ? t + rand(1.5, 3.5) : Infinity);
+  const st = { t: 0, x: geo.inner.x + geo.inner.w * (reason === 'tate' ? 0.3 : 0.8), y: floorY, seg: 0, phase: 'run', near: 0, hideAt: hideAt(0), flash: 0, dir: 0 };
+  const speed = geo.inner.w * (reason === 'tate' ? 0.32 : 0.26);
+  const front = geo.front;
+  let over = false;
+  const finish = (ok, why) => {
+    over = true;
+    if (ok) {
+      m.fed = true;
+      say(`No.${m.no} ${sp.name}がエサの${food}を食べた。`);
+      save();
+      renderHUD();
+      feat.textContent = 'パクッ！ カマキリがエサの虫をつかまえて食べた。';
+    } else {
+      feat.textContent = why;
+    }
+    btns.innerHTML = '';
+    const list = ok ? [] : [{ label: 'もう一度エサの虫を入れて見張る', cls: 'next', onClick: () => feedWatch(i, next) }];
+    list.push({ label: next ? 'つぎへ' : 'とじる', cls: ok ? 'next' : '', onClick: next });
+    addButtons(btns, list);
+  };
+  feat.textContent = `のこり ${FEED_TIME} 秒`;
+  addButtons(btns, [{ label: 'やめる', onClick: next }]);
+  cv.addEventListener('pointerdown', (e) => {
+    if (over || st.phase === 'near' || st.phase === 'gone') return;
+    const r = cv.getBoundingClientRect();
+    // 画面の向きが変わって canvas が縮んでも、描いた座標でタップを判定する
+    const x = (e.clientX - r.left) * pw / r.width, y = (e.clientY - r.top) * ph / r.height;
+    if (Math.hypot(x - st.x, y - st.y) > bugR * 3) return;
+    // カマキリの前に移動させる
+    st.x = front.x + (Math.random() - 0.5) * bugR;
+    st.y = front.y;
+    st.phase = 'near';
+    st.near = 0;
+  });
+  let lastT = T;
+  modalAnim = {
+    draw: () => {
+      const dt = Math.min(0.05, Math.max(0, T - lastT));
+      lastT = T;
+      if (!over) {
+        st.t += dt;
+        const left = Math.max(0, FEED_TIME - st.t);
+        if (st.phase === 'near') {
+          st.near += dt;
+          if (st.near > 0.8) {
+            st.flash = 0.4;
+            if (Math.random() < 0.7) { st.phase = 'gone'; finish(true); }
+            else { st.phase = 'run'; st.seg = 0; st.hideAt = hideAt(st.t); st.x += bugR * 2; }
+          }
+        } else if (st.phase === 'run') {
+          const hiding = st.t >= st.hideAt;
+          const goal = hiding ? hideSpot : path[st.seg];
+          const dx = goal.x - st.x, dy = goal.y - st.y, d = Math.hypot(dx, dy);
+          const v = speed * dt;
+          st.dir = Math.atan2(dy, dx);
+          if (d <= v) {
+            st.x = goal.x; st.y = goal.y;
+            if (hiding) st.phase = 'hidden';
+            else if (++st.seg >= path.length) {
+              st.phase = 'gone';
+              finish(false, m.setup.kind === 'plastic' ? `エサの${food}が、フタの穴から脱走してしまった。` : `エサの${food}がフタのところまで逃げて、カマキリが捕食できる位置に出てこなかった。`);
+            }
+          } else { st.x += dx / d * v; st.y += dy / d * v; }
+        }
+        if (!over && left <= 0) {
+          finish(false, st.phase === 'hidden' ? `エサの${food}が足場に隠れて、カマキリが捕食できる位置に出てこなかった。` : `エサの${food}を、カマキリがつかまえられなかった。`);
+        } else if (!over) {
+          feat.textContent = `${st.phase === 'hidden' ? 'エサの虫が足場に隠れた！ ' : ''}のこり ${Math.ceil(left)} 秒`;
+        }
+      }
+      c2.clearRect(0, 0, pw, ph);
+      c2.fillStyle = '#efe7d4';
+      c2.fillRect(0, 0, pw, ph);
+      c2.fillStyle = '#c9a97a';
+      c2.fillRect(0, ph - 12, pw, 12);
+      Art.cage(c2, box, m.setup, { look: look(m), len: len(m) }, { T, seed: m.no });
+      // カマキリの前 (ここに移動させると、つかまえる)
+      c2.save();
+      c2.setLineDash([4, 4]);
+      c2.strokeStyle = 'rgba(181,71,106,0.55)';
+      c2.lineWidth = 1.5;
+      c2.beginPath();
+      c2.arc(front.x, front.y, bugR * 2, 0, Math.PI * 2);
+      c2.stroke();
+      c2.restore();
+      if (st.phase !== 'gone') {
+        const wob = st.phase === 'run' ? Math.sin(T * 30) * 0.15 : 0;
+        Art.bug(c2, st.x, st.y, bugR, food, st.phase === 'near' ? 0 : st.dir + wob, st.phase === 'hidden' ? 0.4 : 1);
+      }
+      if (st.flash > 0) {
+        st.flash -= dt;
+        c2.fillStyle = '#b5476a';
+        c2.font = `bold ${Math.round(bugR * 2.2)}px sans-serif`;
+        c2.textAlign = 'center';
+        c2.fillText(st.phase === 'gone' ? 'パクッ！' : 'にげた！', front.x, front.y - bugR * 2.6);
+      }
+    },
+  };
 }
 
 /* ---------------- さがしに行く ---------------- */
@@ -509,10 +725,10 @@ function identifyEgg() {
 
 /* ---------------- 飼育ケースを用意する ---------------- */
 function buildCase(m, initial, done) {
-  const setup = { kind: 'plastic', feet: 'none', lid: 'plain', stand: 'yoko', soil: false, ...(initial || {}) };
+  const setup = { kind: 'plastic', size: 'S', feet: 'none', lid: 'plain', stand: 'yoko', lidNet: false, feed: 'direct', soil: false, ...(initial || {}) };
   const card = openModal();
   card.innerHTML = `<h2>飼育ケースを用意する<small>${esc(SP[m.sp].name)}・体長 約${len(m)}mm</small></h2>
-    <div class="panelBox"></div><div class="opts"></div><div class="btns sticky"></div>`;
+    <div class="panelBox"></div><p class="feat"></p><div class="opts"></div><div class="btns sticky"></div>`;
   const pw = Math.min(340, window.innerWidth - 80), ph = Math.round(pw * 0.66);
   const { cv, c2 } = makeCanvas(pw, ph);
   card.querySelector('.panelBox').append(cv);
@@ -540,16 +756,32 @@ function buildCase(m, initial, done) {
     }
     opts.append(g);
   };
+  const feat = card.querySelector('.feat');
   const render = () => {
     opts.innerHTML = '';
     const c = CASE[setup.kind];
     group('ケース', CASES.map((x) => ({ id: x.id, name: x.short })), 'kind', c.text);
-    if (c.feet) {
-      group('足場', FEETS_LABELED, 'feet', FOOT[setup.feet].text);
-      group('置き方', [{ id: 'yoko', name: '横置き' }, { id: 'tate', name: '縦置き' }], 'stand');
+    if (c.stand) {
+      group('ケースの大きさ', CASE_SIZES, 'size');
+      group('置き方', [{ id: 'yoko', name: '横置き' }, { id: 'tate', name: '縦置き' }], 'stand', STAND_TEXT[setup.stand]);
+    }
+    if (c.feet) group('足場', FEETS_LABELED, 'feet', FOOT[setup.feet].text);
+    if (c.stand) {
+      group('フタにネット', [{ id: false, name: 'はさまない' }, { id: true, name: 'はさむ' }], 'lidNet', setup.lidNet ? LID_NET_TEXT : '');
+      group('エサの与え方', FEEDS, 'feed', FEED[setup.feed].text);
     }
     if (c.lids) group('フタと足場', LIDS, 'lid', LID[setup.lid].text);
     if (c.soil) group('土', [{ id: false, name: '入れない' }, { id: true, name: '入れる' }], 'soil');
+    // いまの組み合わせだとどうなるか
+    const t = { ...m, setup: { ...setup } };
+    const notes = [];
+    if (c.stand) {
+      notes.push(m.stage < ADULT ? `高さ 約${roofMM(setup)}mm (次の脱皮に 約${needRoof(t)}mm ほしい)` : `高さ 約${roofMM(setup)}mm`);
+      const w = watchReason(setup);
+      notes.push(w ? 'エサ: 見張りが必要' : 'エサ: 見張らなくていい');
+    }
+    notes.push(`つかまりやすさ ${'●'.repeat(gripOf(t))}${'○'.repeat(3 - gripOf(t))}`);
+    feat.textContent = notes.join(' / ');
   };
   render();
   addButtons(card.querySelector('.btns'), [{ label: 'これでOK', cls: 'next', onClick: () => done({ ...setup }) }]);
@@ -573,6 +805,7 @@ function openCase(i) {
       <h3>気になること</h3>${iss.length ? `<ul>${iss.map((x) => `<li>${esc(x.text)}</li>`).join('')}</ul>` : '<p>とくにない。落ち着いてすごしている。</p>'}`
       : '<p>洗濯ネットごしで、中のようすがよく見えない。全体がメッシュなので脱皮はしやすい。</p>'}
     ${c.see === 1 ? '<p class="sub">メッシュで観察しにくいけど、1面が透明なのでそこから見える。</p>' : ''}
+    ${game.season === WINTER ? '' : `<p>エサ: <b>${m.fed ? '今週はもう食べた' : 'まだ食べていない'}</b>${!m.fed && watchReason(m.setup) ? '・見張りが必要' : ''}</p>`}
     <p class="sub">${esc(m.from)}</p><div class="btns"></div>`;
   const pw = Math.min(340, window.innerWidth - 80), ph = Math.round(pw * 0.66);
   const { cv, c2 } = makeCanvas(pw, ph);
@@ -587,7 +820,18 @@ function openCase(i) {
       Art.cage(c2, { x: pw * 0.1, y: ph * 0.06, w: pw * 0.8, h: ph * 0.94 - 12 }, m.setup, { look: look(m), len: len(m) }, { T, seed: m.no });
     },
   };
+  const feedBtn = game.season !== WINTER && !m.fed ? [{
+    label: watchReason(m.setup) ? '見張ってエサをあげる' : 'エサをあげる', cls: 'next',
+    onClick: () => {
+      if (watchReason(m.setup)) { feedWatch(i, () => openCase(i)); return; }
+      m.fed = true;
+      say(feedLine(m));
+      save();
+      openCase(i);
+    },
+  }] : [];
   addButtons(card.querySelector('.btns'), [
+    ...feedBtn,
     { label: 'ケースを作りなおす', onClick: () => buildCase(m, m.setup, (setup) => { m.setup = setup; say(`No.${m.no}のケースを作りなおした (${setupText(setup)})。`); save(); openCase(i); }) },
     { label: 'とじる' },
   ]);
@@ -617,6 +861,10 @@ function showDex(back) {
     ...CASES.map((c) => `<details><summary><b>${esc(c.name)}</b></summary><p>${esc(c.text)}</p></details>`),
     ...FEET.filter((f) => f.id !== 'none').map((f) => `<details><summary><b>足場: ${esc(f.name)}</b></summary><p>${esc(f.text)}</p></details>`),
     `<details><summary><b>プラカップのフタ</b></summary>${LIDS.map((l) => `<p>${esc(l.name)}: ${esc(l.text)}</p>`).join('')}</details>`,
+    `<details><summary><b>縦置きと横置き</b></summary><p>プラスチック製飼育ケースを使う場合、縦置きと横置きがあります。カマキリは脱皮に高さが必要で、プラケースのサイズによっては高さが確保しにくいこともあるので縦置きが適している場合が多いです。</p>
+      <p>縦置き: ${esc(STAND_TEXT.tate)}</p><p>横置き: ${esc(STAND_TEXT.yoko)}</p><p>${esc(LID_NET_TEXT)}</p></details>`,
+    `<details><summary><b>エサの与え方</b></summary><p>エサの虫はレッドローチやコオロギ。</p>${FEEDS.map((f) => `<p>${esc(f.name)}: ${esc(f.text)}</p>`).join('')}
+      <p>縦置きと横置きは、使うケースの大きさや足場、餌の与え方などの目的に適しているのを選びましょう。</p></details>`,
   ].join('');
   addButtons(card.querySelector('.btns'), [{ label: 'とじる', onClick: back }]);
 }
@@ -632,7 +880,7 @@ function titleScreen() {
   btns.push({ label: 'はじめから', onClick: saved ? confirmNew : startNew });
   btns.push({ label: '図鑑を見る', onClick: () => { game = saved; showDex(titleScreen); } });
   modal('カマキリ採集飼育帳<small>MANTIS FIELD</small>',
-    '<p>いろいろな場所でカマキリをさがして、種類を見分けよう。連れて帰ったら、ケースと足場を選んで飼育ケースを用意し、成虫まで育てよう。</p>', btns);
+    '<p>いろいろな場所でカマキリをさがして、種類を見分けよう。連れて帰ったら、ケースと足場と置き方を選んで飼育ケースを用意し、エサをあげて成虫まで育てよう。</p>', btns);
   $('modal').classList.add('low');
 }
 
@@ -646,7 +894,7 @@ function startNew() {
   scene = 'shelf';
   showHUD(true);
   say(`${dateText()}。`);
-  modal('1年目の春<small>SPRING</small>', '<p>カマキリをさがしに行こう。見つけたら種類を見分けて、飼育ケースを用意して育てよう。</p><p class="sub">1週間に1回、さがしに行ける。ケースの棚には6つまで置ける。冬が来る前に成虫まで育てよう。</p>');
+  modal('1年目の春<small>SPRING</small>', '<p>カマキリをさがしに行こう。見つけたら種類を見分けて、飼育ケースを用意して育てよう。</p><p class="sub">1週間に1回、さがしに行ける。エサは1週間に1回あげる。ケースの棚には6つまで置ける。冬が来る前に成虫まで育てよう。</p>');
 }
 
 function resume(saved) {
@@ -700,6 +948,8 @@ function renderHUD() {
   const sb = document.querySelector('#actions [data-act="search"]');
   sb.disabled = game.searched;
   sb.querySelector('small').textContent = game.searched ? '今週は行った' : 'さがしに行く';
+  const hungry = game.season !== WINTER && game.shelf.some((m) => m && !m.fed);
+  document.querySelector('#actions [data-act="feed"]').classList.toggle('due', hungry);
 }
 
 /* ---------------- 描画 ---------------- */
@@ -726,7 +976,7 @@ function shelfLayout() {
 }
 
 const DEMO = [
-  { sp: 'oo', stage: 3, color: '#7cb342', adultLen: 85, setup: { kind: 'plastic', feet: 'hachi', stand: 'tate' } },
+  { sp: 'oo', stage: 3, color: '#7cb342', adultLen: 85, setup: { kind: 'plastic', size: 'L', feet: 'hachi', stand: 'tate', feed: 'dish' } },
   { sp: 'koka', stage: 2, color: '#a1804f', adultLen: 50, setup: { kind: 'mesh' } },
   { sp: 'hina', stage: 3, color: '#6b4f33', adultLen: 15, setup: { kind: 'cup', lid: 'drainTop' } },
   { sp: 'harabiro', stage: 3, color: '#7cb342', adultLen: 60, bumpsL: 3, bumpsR: 3, setup: { kind: 'plastic', feet: 'drain', stand: 'yoko' } },
@@ -771,13 +1021,10 @@ function drawShelf() {
     const c = CASE[m.setup.kind];
     let mark = null;
     if (!demo) mark = c.see === 0 ? '#b8b8b0' : m.health >= 70 ? '#5cb85c' : m.health >= 40 ? '#f0ad4e' : '#d9534f';
-    Art.cage(ctx, cell, m.setup, { look: look(m), len: len(m) }, { T: T + i * 1.3, seed: i + 3, label: demo ? `${[14, 7, 3, 13, 0, 5][i]}` : `No.${m.no}`, mark });
-    if (m.shed) {
-      ctx.font = `bold ${Math.max(11, cell.w * 0.07)}px sans-serif`;
-      ctx.fillStyle = '#b5476a';
-      ctx.textAlign = 'center';
-      ctx.fillText('脱皮した！', cell.x + cell.w / 2, cell.y + cell.h * 0.12);
-    }
+    const tags = [];
+    if (m.shed) tags.push(['脱皮した！', '#b5476a']);
+    if (!demo && !m.fed && game.season !== WINTER) tags.push(['エサまだ', '#b06a12']);
+    Art.cage(ctx, cell, m.setup, { look: look(m), len: len(m) }, { T: T + i * 1.3, seed: i + 3, label: demo ? `${[14, 7, 3, 13, 0, 5][i]}` : `No.${m.no}`, mark, tags });
   });
 }
 
@@ -825,7 +1072,7 @@ function frame(now) {
 }
 
 /* ---------------- 入力 ---------------- */
-const ACTIONS = { search: actSearch, dex: () => showDex(), next: actNext };
+const ACTIONS = { search: actSearch, feed: actFeed, dex: () => showDex(), next: actNext };
 document.querySelectorAll('#actions button').forEach((b) => b.addEventListener('click', () => {
   if (game && scene === 'shelf') ACTIONS[b.dataset.act]();
 }));

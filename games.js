@@ -31,11 +31,11 @@ const GAMES = [
     slug: 'mantis-field', genre: 'raising', players: '1P', date: '2026-11-03',
     ja: {
       title: 'カマキリ採集飼育帳 ― MANTIS FIELD',
-      desc: '草むらや木、林の落ち葉、南の島でカマキリをさがし、前脚の付け根の色や後翅を見て9種類を見分ける。ケースと足場を選んで飼育ケースを用意し、冬が来る前に成虫まで育てる。スマホ対応。',
+      desc: '草むらや木、林の落ち葉、南の島でカマキリをさがし、前脚の付け根の色や後翅を見て9種類を見分ける。ケースと足場と縦置き・横置きを選んで飼育ケースを用意し、エサの虫が逃げないように見張りながら、冬が来る前に成虫まで育てる。スマホ対応。',
     },
     en: {
       title: 'Mantis Field',
-      desc: 'Search grass, trees, leaf litter and southern islands for mantises, then tell nine kinds apart by the color at the base of the forelegs, the hind wings and more. Pick a case and a foothold so they can molt, and raise them to adults before winter. Plays on phones.',
+      desc: 'Search grass, trees, leaf litter and southern islands for mantises, then tell nine kinds apart by the color at the base of the forelegs, the hind wings and more. Pick a case, a foothold and whether to stand it upright so they can molt, keep feeder insects from escaping, and raise them to adults before winter. Plays on phones.',
     },
   },
 ];

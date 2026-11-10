@@ -57,6 +57,7 @@ button[aria-pressed="true"] { background: #ffe7a8; border-color: #b07a1c; box-sh
 #actions button span { font-size: 22px; line-height: 1.1; }
 #actions button small { font-size: 12px; white-space: nowrap; }
 #actions button.next { flex: 1.4; }
+#actions button.due { background: #ffe7a8; border-color: #b07a1c; box-shadow: 0 3px 0 #b07a1c; }
 #fieldBtns button { flex: 1; font-size: 17px; padding: 12px 8px; }
 
 #fieldInfo {

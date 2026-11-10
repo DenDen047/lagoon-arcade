@@ -337,7 +337,12 @@ const Art = (() => {
 
   /* ---------- 飼育ケース ---------- */
   // ケースの中の幅 (mm)。カマキリをどの大きさで描くかに使う
-  const INNER_MM = { plastic: [180, 120], kobae: [180, 120], mesh: [200, 200], net: [220, 220], cup: [75, 75] };
+  const INNER_MM = { mesh: [200, 200], net: [220, 220], cup: [75, 75] };
+  // ケースの中の横幅 (mm)。縦置き・横置きできるケースは大きさを選べる
+  function innerWidthMM(setup) {
+    if (CASE[setup.kind].stand) { const mm = CASE_SIZE[setup.size || 'S'].mm; return mm[setup.stand === 'tate' ? 1 : 0]; }
+    return INNER_MM[setup.kind][0];
+  }
 
   // ケースの外形。セルの中に収まる長方形を返す
   function caseBox(cell, setup) {
@@ -349,6 +354,7 @@ const Art = (() => {
     let w = cell.w, h = w / aspect;
     if (h > cell.h) { h = cell.h; w = h * aspect; }
     if (setup.kind === 'cup') { w *= 0.62; h *= 0.62; }
+    else if (CASE[setup.kind].stand && (setup.size || 'S') === 'S') { w *= 0.8; h *= 0.8; }
     return { x: cell.x + (cell.w - w) / 2, y: cell.y + cell.h - h, w, h };
   }
 
@@ -414,17 +420,94 @@ const Art = (() => {
     }
   }
 
-  /* ケースを1つ描く。cell はセルの長方形、setup = { kind, feet, lid, stand, soil }。
-     who: { look (mantis に渡すもの), len (体長 mm) } か null。opts: { label, mark, seed, T } */
-  function cage(ctx, cell, setup, who, opts) {
-    opts = opts || {};
-    const T = opts.T || 0;
+  /* ケースの中の形。inner: カマキリのいる場所 / sheet: つかまる面 (なければ null) / lid: フタ (縦置き・横置きのケース) /
+     floorY: 床 / mantis: カマキリの置き方 / front: カマキリの前 (エサの虫をつかまえるところ) */
+  function caseGeom(cell, setup, lenMM) {
     const b = caseBox(cell, setup);
     const k = setup.kind;
     const lid = setup.lid ? LID[setup.lid] : null;
     const feetKind = k === 'cup' ? (lid ? lid.feet : 'none') : (CASE[k].feet ? setup.feet : 'none');
     const flip = k === 'cup' && lid && lid.flip;
     const tate = setup.stand === 'tate';
+    const stand = !!CASE[k].stand;
+    let inner = { x: b.x + b.w * 0.06, y: b.y + b.h * 0.1, w: b.w * 0.88, h: b.h * 0.84 };
+    if (stand && tate) inner = { x: b.x + b.w * 0.06, y: b.y + b.h * 0.06, w: b.w * 0.76, h: b.h * 0.88 };
+    if (k === 'cup') inner = { x: b.x + b.w * 0.18, y: b.y + b.h * 0.16, w: b.w * 0.64, h: b.h * 0.78 };
+    else if (k === 'net') inner = { x: b.x + b.w * 0.15, y: b.y + b.h * 0.2, w: b.w * 0.7, h: b.h * 0.72 };
+    let sheet = null;
+    if (feetKind !== 'none') {
+      if (k === 'cup') {
+        if (flip) sheet = { x: inner.x + inner.w * 0.1, y: inner.y + inner.h * 0.05, w: inner.w * 0.8, h: inner.h * 0.9 };
+      } else if (tate) sheet = { x: inner.x + inner.w * 0.08, y: inner.y, w: inner.w * 0.5, h: inner.h };
+      else sheet = { x: inner.x + inner.w * 0.05, y: inner.y, w: inner.w * 0.42, h: inner.h };
+    }
+    const lidBox = stand ? (tate ? { x: b.x + b.w * 0.86, y: b.y, w: b.w * 0.14, h: b.h } : { x: b.x, y: b.y, w: b.w, h: b.h * 0.12 }) : null;
+    const floorY = setup.soil && k !== 'cup' && k !== 'net' ? b.y + b.h * 0.86 : b.y + b.h * 0.95;
+    // カマキリのつかまる面。フタにネットをはさんだ横置きは天井、メッシュは全体
+    let grip = sheet;
+    if (k === 'mesh' || k === 'net') grip = inner;
+    const lidNetTop = stand && setup.lidNet && !tate && !sheet;
+    const hangLid = (k === 'cup' && !flip && lid && lid.feet !== 'none') || lidNetTop;
+    const pxPerMM = inner.w / innerWidthMM(setup);
+    const upright = !!grip && !hangLid;
+    const room = upright ? inner.h * 0.85 : inner.w * 0.85;
+    const s = Math.min(room, Math.max(16, (lenMM || 30) * pxPerMM * 1.4)) / BODY_UNITS;
+    let pose, front;
+    if (hangLid) {
+      pose = { mode: 'hang', x: inner.x + inner.w * 0.55, y: lidNetTop ? lidBox.y + lidBox.h : inner.y + inner.h * 0.05 };
+      front = { x: pose.x + 40 * s, y: pose.y + 30 * s };
+    } else if (upright) {
+      pose = { mode: 'up', x: grip.x + grip.w / 2 + 25 * s, y: grip.y + grip.h / 2 - 8 * s };
+      front = { x: pose.x - 22 * s, y: pose.y - 42 * s };
+    } else {
+      pose = { mode: 'floor', x: inner.x + inner.w * (stand && tate ? 0.35 : 0.45), y: floorY };
+      front = { x: pose.x + 46 * s, y: floorY - 8 * s };
+    }
+    front.x = Math.max(inner.x + 6, Math.min(inner.x + inner.w - 6, front.x));
+    front.y = Math.max(inner.y + 6, Math.min(floorY - 4, front.y));
+    return { b, inner, sheet, lid: lidBox, floorY, feetKind, flip, tate, stand, pose, s, front };
+  }
+
+  // エサの虫。food: 'レッドローチ' (赤茶色で平たい) / 'コオロギ' (黒っぽく、後脚が太い)。x, y は中心、r は大きさ、a は向き
+  function bug(ctx, x, y, r, food, a, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha === undefined ? 1 : alpha;
+    ctx.translate(x, y);
+    ctx.rotate(a || 0);
+    const cricket = food === 'コオロギ';
+    const body = cricket ? '#2c2219' : '#9a4a24', dark = cricket ? '#14100c' : '#5e2a12';
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = Math.max(1, r * 0.12);
+    ctx.beginPath();
+    for (const sy of [-1, 1]) {
+      ctx.moveTo(r * 0.5, sy * r * 0.2); ctx.lineTo(r * 0.9, sy * r * 0.75);
+      ctx.moveTo(0, sy * r * 0.3); ctx.lineTo(r * 0.05, sy * r * 0.9);
+      if (cricket) { ctx.moveTo(-r * 0.3, sy * r * 0.3); ctx.lineTo(-r * 0.2, sy * r * 0.95); ctx.lineTo(-r * 1.3, sy * r * 0.7); }
+      else { ctx.moveTo(-r * 0.4, sy * r * 0.3); ctx.lineTo(-r * 0.8, sy * r * 0.9); }
+      // 触角
+      ctx.moveTo(r * 0.95, sy * r * 0.12); ctx.quadraticCurveTo(r * 1.6, sy * r * 0.3, r * 2.1, sy * r * 0.9);
+    }
+    ctx.stroke();
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r, r * (cricket ? 0.45 : 0.55), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = dark;
+    ctx.beginPath();
+    ctx.ellipse(r * 0.85, 0, r * 0.28, r * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /* ケースを1つ描く。cell はセルの長方形、setup = { kind, feet, lid, stand, soil }。
+     who: { look (mantis に渡すもの), len (体長 mm) } か null。opts: { label, mark, seed, T } */
+  function cage(ctx, cell, setup, who, opts) {
+    opts = opts || {};
+    const T = opts.T || 0;
+    const g = caseGeom(cell, setup, who ? who.len : 30);
+    const { b, inner, sheet, feetKind, flip, tate } = g;
+    const k = setup.kind;
+    const lid = setup.lid ? LID[setup.lid] : null;
     ctx.save();
     // 影
     ctx.fillStyle = 'rgba(0,0,0,0.12)';
@@ -432,8 +515,6 @@ const Art = (() => {
     ctx.ellipse(b.x + b.w / 2, b.y + b.h, b.w * 0.52, Math.max(2, b.h * 0.03), 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // ケースの中の「場所」(カマキリが乗るところ)
-    let inner = { x: b.x + b.w * 0.06, y: b.y + b.h * 0.1, w: b.w * 0.88, h: b.h * 0.84 };
     if (k === 'cup') {
       // 上が広い (逆さに置くと下が広い) カップ
       const top = flip ? 0.78 : 1, bot = flip ? 1 : 0.78;
@@ -448,58 +529,55 @@ const Art = (() => {
       ctx.strokeStyle = '#8fa9b4';
       ctx.lineWidth = Math.max(1.2, b.w * 0.02);
       ctx.stroke();
-      inner = { x: b.x + b.w * 0.18, y: b.y + b.h * 0.16, w: b.w * 0.64, h: b.h * 0.78 };
     } else if (k === 'net') {
       ctx.beginPath();
       ctx.ellipse(b.x + b.w / 2, b.y + b.h * 0.55, b.w * 0.5, b.h * 0.45, 0, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(250,250,247,0.5)';
       ctx.fill();
-      inner = { x: b.x + b.w * 0.15, y: b.y + b.h * 0.2, w: b.w * 0.7, h: b.h * 0.72 };
     } else {
       roundRect(ctx, b.x, b.y, b.w, b.h, Math.min(b.w, b.h) * 0.06);
       ctx.fillStyle = k === 'mesh' ? 'rgba(250,250,250,0.35)' : 'rgba(225,240,245,0.4)';
       ctx.fill();
     }
 
-    // 足場。sheet はカマキリがつかまる面
-    let sheet = null;
-    if (feetKind !== 'none') {
-      if (k === 'cup') {
-        if (flip) sheet = { x: inner.x + inner.w * 0.1, y: inner.y + inner.h * 0.05, w: inner.w * 0.8, h: inner.h * 0.9 };
-      } else if (tate) sheet = { x: inner.x + inner.w * 0.08, y: inner.y, w: inner.w * 0.5, h: inner.h };
-      else sheet = { x: inner.x + inner.w * 0.05, y: inner.y, w: inner.w * 0.42, h: inner.h };
-      if (sheet) foothold(ctx, feetKind, sheet.x, sheet.y, sheet.w, sheet.h, opts.seed);
-    }
-    if (k === 'mesh' || k === 'net') sheet = inner;
+    // 足場
+    if (sheet) foothold(ctx, feetKind, sheet.x, sheet.y, sheet.w, sheet.h, opts.seed);
     if (setup.soil && k !== 'cup' && k !== 'net') soil(ctx, b.x + b.w * 0.03, b.y + b.h * 0.86, b.w * 0.94, b.h * 0.11, T, opts.seed);
+    // エサの虫を入れておくカップ (フタをしていないカップケースやタッパー)
+    if (g.stand && setup.feed === 'dish') {
+      const dw = inner.w * (tate ? 0.3 : 0.2), dh = Math.min(inner.h * 0.16, dw * 0.6);
+      const dx = inner.x + inner.w - dw - inner.w * 0.04, dy = g.floorY - dh;
+      roundRect(ctx, dx, dy, dw, dh, dh * 0.2);
+      ctx.fillStyle = 'rgba(235,245,250,0.85)';
+      ctx.fill();
+      ctx.strokeStyle = '#7f98a3';
+      ctx.lineWidth = Math.max(1, dw * 0.04);
+      ctx.stroke();
+      bug(ctx, dx + dw * 0.45, dy + dh * 0.6, Math.min(dw * 0.16, dh * 0.4), opts.food || 'レッドローチ', 0.2);
+    }
 
     // カマキリ。つかまる場所があれば足場やかべに頭を上にしてつかまり、なければ床にいる。
     // 棚の上の小さなケースでも見えるように、実物より少し大きく描く
-    const hangLid = k === 'cup' && !flip && lid && lid.feet !== 'none';
     if (who) {
-      const pxPerMM = inner.w / INNER_MM[k][tate ? 1 : 0];
-      const upright = !!sheet && !hangLid;
-      const room = upright ? inner.h * 0.85 : inner.w * 0.85;
-      const s = Math.min(room, Math.max(16, who.len * pxPerMM * 1.4)) / BODY_UNITS;
+      const s = g.s, pose = g.pose;
       ctx.save();
       ctx.beginPath();
       ctx.rect(b.x, b.y, b.w, b.h);
       ctx.clip();
       ctx.globalAlpha = k === 'net' ? 0.45 : 1;
-      if (hangLid) {
-        // フタの網にぶら下がる
-        ctx.translate(inner.x + inner.w * 0.55, inner.y + inner.h * 0.05);
+      if (pose.mode === 'hang') {
+        // フタや天井の網にぶら下がる
+        ctx.translate(pose.x, pose.y);
         ctx.scale(1, -1);
         ctx.rotate(Math.sin(T * 0.8) * 0.03);
         mantis(ctx, 0, 0, s, { ...who.look, t: T, aim: Math.sin(T * 0.5) * 0.3 });
-      } else if (upright) {
+      } else if (pose.mode === 'up') {
         // 体の中心が足場のまん中にくるように置く (頭が上、背中が左)
-        ctx.translate(sheet.x + sheet.w / 2 + 25 * s, sheet.y + sheet.h / 2 - 8 * s);
+        ctx.translate(pose.x, pose.y);
         ctx.rotate(-Math.PI / 2 + Math.sin(T * 1.2) * 0.04);
         mantis(ctx, 0, 0, s, { ...who.look, t: T, aim: Math.sin(T * 0.5) * 0.3 });
       } else {
-        const fy = setup.soil && k !== 'cup' ? b.y + b.h * 0.86 : b.y + b.h * 0.95;
-        mantis(ctx, inner.x + inner.w * 0.55, fy, s, { ...who.look, t: T, aim: Math.sin(T * 0.5) * 0.3 });
+        mantis(ctx, pose.x, pose.y, s, { ...who.look, t: T, aim: Math.sin(T * 0.5) * 0.3 });
       }
       ctx.restore();
     }
@@ -511,8 +589,12 @@ const Art = (() => {
       ctx.lineWidth = Math.max(1.5, b.w * 0.015);
       ctx.stroke();
       // フタ。横置きは上、縦置きは横についている
-      const lw = tate ? b.w * 0.14 : b.w, lh = tate ? b.h : b.h * 0.12;
-      const lx = tate ? b.x + b.w - lw : b.x, ly = b.y;
+      const lx = g.lid.x, ly = g.lid.y, lw = g.lid.w, lh = g.lid.h;
+      // フタにはさんだネット (内側に少し見える)
+      if (setup.lidNet) {
+        if (tate) foothold(ctx, 'drain', lx - lw * 0.35, ly + lh * 0.04, lw * 0.4, lh * 0.92, opts.seed);
+        else foothold(ctx, 'drain', lx + lw * 0.04, ly + lh * 0.75, lw * 0.92, lh * 0.45, opts.seed);
+      }
       roundRect(ctx, lx, ly, lw, lh, Math.min(lw, lh) * 0.3);
       ctx.fillStyle = '#2d2f31';
       ctx.fill();
@@ -637,6 +719,19 @@ const Art = (() => {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(opts.label, b.x + b.w / 2, ly + fs * 0.72);
+      // 「脱皮した！」「エサまだ」などの札。番号の上に重ねる
+      (opts.tags || []).forEach(([text, col], i) => {
+        const tfs = fs * 0.85;
+        ctx.font = `bold ${tfs}px sans-serif`;
+        const ttw = ctx.measureText(text).width + tfs * 0.8;
+        const ty = ly - (i + 1) * tfs * 1.5;
+        ctx.fillStyle = col;
+        roundRect(ctx, b.x + b.w / 2 - ttw / 2, ty, ttw, tfs * 1.35, tfs * 0.4);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.fillText(text, b.x + b.w / 2, ty + tfs * 0.7);
+      });
+      ctx.font = `bold ${fs}px sans-serif`;
       if (opts.mark) {
         ctx.beginPath();
         ctx.arc(lx + tw + fs * 0.5, ly + fs * 0.7, fs * 0.4, 0, Math.PI * 2);
@@ -1102,7 +1197,7 @@ const Art = (() => {
   }
 
   return {
-    mantis, ootheca, cage, caseBox, field, roundRect, bodyColor, palette, rng,
+    mantis, ootheca, cage, caseBox, caseGeom, bug, field, roundRect, bodyColor, palette, rng,
     panelCoxa, panelWings, panelSternum, panelLegs, panelSize, panelOotheca, BODY_UNITS,
   };
 })();

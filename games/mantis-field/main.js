@@ -111,6 +111,7 @@ function actNext() {
   game.shelf.forEach((m, i) => {
     if (!m) return;
     m.shed = false;
+    m.moltFail = false;
     const iss = issues(m);
     const before = m.health;
     const hurt = iss.filter((x) => HEALTH[x.k]);
@@ -137,6 +138,7 @@ function actNext() {
         } else {
           m.health = clamp(m.health + HEALTH.moltFail);
           m.toMolt = 1;
+          m.moltFail = true;
           events.push(`No.${m.no} ${sp.name}は、うまくつかまれず脱皮に失敗した…。`);
         }
       }
@@ -562,7 +564,8 @@ function openCase(i) {
   const card = openModal();
   const visible = c.see > 0;
   const iss = issues(m);
-  const healthText = m.health >= 70 ? '元気そう' : m.health >= 40 ? 'ちょっと元気がない' : 'かなり弱っている';
+  // 脱皮に失敗した週は、げんきがまだ高くても失敗したことがわかるようにする
+  const healthText = m.moltFail && m.health >= 40 ? '脱皮に失敗して、少し弱っている' : m.health >= 70 ? '元気そう' : m.health >= 40 ? 'ちょっと元気がない' : 'かなり弱っている';
   card.innerHTML = `<h2>No.${m.no} ${esc(sp.name)}<small>${esc(STAGES[m.stage].name)}・体長 約${len(m)}mm</small></h2>
     <div class="panelBox"></div>
     <p class="sub">${esc(setupText(m.setup))}</p>
